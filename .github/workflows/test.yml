@@ -1,0 +1,108 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  suite:
+    name: suite on ${{ matrix.os }} / py${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python: ["3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Glass is a consumer of seam, so the checkout has to land next to it.
+          path: glass
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      # Glass is not published yet, so seam comes from the repository rather
+      # than an index. Same layout the README describes for a local checkout.
+      - name: Check out seam as a sibling
+        uses: actions/checkout@v4
+        with:
+          repository: adc77/seam
+          path: seam
+
+      - name: Show the interpreter
+        run: python -VV
+
+      - name: Run the suite
+        working-directory: glass
+        run: python -m unittest discover -s tests -t . -v
+
+      - name: The release case is byte-stable across two runs
+        working-directory: glass
+        run: |
+          case=glass/cases/release.json
+          for run in 1 2; do
+            SEAM_SIM=1 \
+            SEAM_NAMESPACE=sim-glass-release \
+            SEAM_CASE=$case \
+            SEAM_ARTIFACT="$RUNNER_TEMP/release-$run.json" \
+            PYTHONPATH="../seam:." \
+            python -m glass
+          done
+          cmp "$RUNNER_TEMP/release-1.json" "$RUNNER_TEMP/release-2.json"
+          python - "$RUNNER_TEMP/release-1.json" <<'PY'
+          import json, sys
+          art = json.load(open(sys.argv[1]))
+          assert art["status"] == "passed", art
+          assert art["digest"] == "7864660de112c64315df7ac8519f8ce9a97df6428a7653059b8a67c2d2ea7cd7", art["digest"]
+          print("glass release ok:", art["digest"])
+          PY
+
+      - name: The guarded socket leak still fails closed
+        working-directory: glass
+        run: |
+          python - <<'PY'
+          import json, os, subprocess, sys, tempfile
+          directory = tempfile.mkdtemp()
+          case = os.path.join(directory, "leak.json")
+          with open(case, "w", encoding="ascii") as handle:
+              json.dump(
+                  {
+                      "format": "seam-case", "version": 1, "name": "glass-leak",
+                      "seed": 1842, "namespace": "sim-glass-ci-leak",
+                      "clock": {"start_ns": 0, "epoch": "1970-01-01T00:00:00Z"},
+                      "initial_state": {},
+                      "arrivals": [{"at_ns": 0, "handler": "receive",
+                                    "body": {"sample": "s1", "kind": "blood", "leak": "socket"}}],
+                      "ports": {
+                          "bench": {"mode": "script", "replies": [{"match": {"$any": True},
+                                                                 "response": {"status": "ready", "machine": "m1"}}]},
+                          "qc": {"mode": "script", "replies": [{"match": {"$any": True},
+                                                                "response": {"status": "pass"}}]},
+                          "report": {"mode": "script", "replies": [{"match": {"$any": True},
+                                                                   "response": {"status": "filed"}}]},
+                      },
+                      "stop": {"when": "quiescence"},
+                      "assertions": [{"op": "fault_is", "code": "real_io"}],
+                  },
+                  handle,
+              )
+          out = os.path.join(directory, "out.json")
+          env = dict(os.environ, SEAM_SIM="1", SEAM_NAMESPACE="sim-glass-ci-leak",
+                     SEAM_CASE=case, SEAM_ARTIFACT=out, PYTHONPATH="../seam:.")
+          proc = subprocess.run([sys.executable, "-m", "glass"], env=env,
+                                capture_output=True, text=True, timeout=30)
+          assert proc.returncode == 2, (proc.returncode, proc.stdout, proc.stderr)
+          with open(out, encoding="ascii") as handle:
+              art = json.load(handle)
+          assert art["fault"]["code"] == "real_io", art
+          assert art["port_calls"] == [], art
+          assert "203.0.113.1" not in proc.stdout + proc.stderr
+          print("leak fails closed:", art["fault"])
+          PY
