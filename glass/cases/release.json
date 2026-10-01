@@ -1,0 +1,45 @@
+{
+  "format": "seam-case",
+  "version": 1,
+  "name": "release",
+  "seed": 1842,
+  "namespace": "sim-glass-release",
+  "clock": {"start_ns": 0, "epoch": "1970-01-01T00:00:00Z"},
+  "initial_state": {},
+  "arrivals": [
+    {"at_ns": 0, "handler": "receive", "body": {"sample": "s1", "kind": "blood"}},
+    {"at_ns": 1000000000, "handler": "reading", "body": {"sample": "s1", "value": 42}}
+  ],
+  "ports": {
+    "bench": {
+      "mode": "script",
+      "replies": [
+        {"match": {"kind": "blood"}, "response": {"status": "ready", "machine": "m1"}, "repeat": 1}
+      ]
+    },
+    "qc": {
+      "mode": "script",
+      "replies": [
+        {"match": {"kind": "blood", "value": 42}, "response": {"status": "pass"}, "repeat": 1}
+      ]
+    },
+    "report": {
+      "mode": "script",
+      "replies": [
+        {"match": {"sample": "s1", "disposition": "released"}, "response": {"status": "filed"}, "repeat": 1}
+      ]
+    }
+  },
+  "stop": {"when": "quiescence"},
+  "assertions": [
+    {"op": "port_called", "port": "bench", "times": 1},
+    {"op": "port_called", "port": "qc", "times": 1},
+    {"op": "port_called", "port": "report", "times": 1, "match": {"disposition": "released"}},
+    {"op": "event_count", "handler": "due", "times": 0},
+    {"op": "timer_outcome", "name": "due-once", "outcome": "cancelled"},
+    {"op": "state_is", "path": "sample.status", "value": "released"},
+    {"op": "state_is", "path": "sample.id", "value": "smp_8f2a50d0aa7c8057"},
+    {"op": "state_is", "path": "sample.machine", "value": "m1"},
+    {"op": "stopped", "reason": "quiescence"}
+  ]
+}
