@@ -51,6 +51,23 @@ def _same(row, body):
     return type(body) is dict and row.get("public") == body.get("sample")
 
 
+def _observed(body):
+    """A reading body needs a `sample` and an integer `value`.
+
+    Returns the value, or None when the body is not a reading at all. A body
+    that names the right sample but carries no usable value is a fault, not a
+    silent no-op: the reading is what the bench was waiting for.
+    """
+    if type(body) is not dict:
+        return None
+    if "value" not in body:
+        return None
+    value = body["value"]
+    if type(value) is not int:
+        raise Fault("bad_value")
+    return value
+
+
 def _slot(reply):
     if type(reply) is not dict or reply.get("status") not in ("ready", "busy"):
         raise Fault("bad_value")
@@ -81,14 +98,30 @@ def _file(ctx, public, disposition):
     ctx.emit("report", {"sample": public, "disposition": disposition})
 
 
+def _receipt(body):
+    """Validate an inbound arrival body.
+
+    Every other handler in this pipeline treats a body it does not recognise
+    as a no-op. `receive` used to index the body directly, so a malformed
+    arrival surfaced as a KeyError and the run ended as `handler_error` rather
+    than a clean `bad_value`. Validating here keeps the failure legible.
+    """
+    if type(body) is not dict:
+        raise Fault("bad_value")
+    sample = body.get("sample")
+    kind = body.get("kind")
+    if type(sample) is not str or sample == "" or type(kind) is not str or kind == "":
+        raise Fault("bad_value")
+    return sample, kind
+
+
 def on_receive(ctx, body):
     # One guarded leak, so this product can prove the sim process fails closed.
     if type(body) is dict and body.get("leak") == "socket":
         import socket
 
         socket.create_connection(("203.0.113.1", 80), timeout=1)
-    public = body["sample"]
-    kind = body["kind"]
+    public, kind = _receipt(body)
     sid = ctx.id("smp")
     slot = _slot(ctx.emit("bench", {"kind": kind}))
     if slot["status"] == "busy":
@@ -130,12 +163,13 @@ def on_retry(ctx, body):
 
 def on_reading(ctx, body):
     row = _sample(ctx)
-    if row is None or row.get("status") != "running" or not _same(row, body):
+    value = _observed(body)
+    if row is None or row.get("status") != "running" or value is None or not _same(row, body):
         return
     due = row.get("due")
     if type(due) is str:
         ctx.cancel(due)
-    verdict = ctx.emit("qc", {"kind": row["kind"], "value": body["value"]})
+    verdict = ctx.emit("qc", {"kind": row["kind"], "value": value})
     if type(verdict) is not dict or verdict.get("status") not in ("pass", "fail"):
         raise Fault("bad_value")
     if verdict["status"] == "pass":

@@ -40,6 +40,13 @@ CASES = {
     "fail-then-release": ("sim-glass-fail", os.path.join(CASE_DIR, "fail_then_release.json")),
     "overdue": ("sim-glass-overdue", os.path.join(CASE_DIR, "overdue.json")),
     "dropped": ("sim-glass-dropped", os.path.join(CASE_DIR, "dropped.json")),
+    # The qc-fail branches. A failed qc does not end the sample: it goes back to
+    # the bench once, and only a second failure scraps it.
+    "qc-fail-scrapped": ("sim-glass-scrapped", os.path.join(CASE_DIR, "qc_fail_scrapped.json")),
+    "qc-fail-retest-busy": (
+        "sim-glass-retest-busy",
+        os.path.join(CASE_DIR, "qc_fail_retest_busy.json"),
+    ),
 }
 
 

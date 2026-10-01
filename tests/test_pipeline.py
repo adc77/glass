@@ -61,6 +61,109 @@ class ScriptTest(unittest.TestCase):
             dropped = _artifact(os.path.join(directory, "dropped.json"))
             self.assertEqual(dropped["clock"]["end_ns"], 5_000_000_000)
 
+            # The qc-fail branches carry the logic that used to be untested.
+            scrapped = _artifact(os.path.join(directory, "qc-fail-scrapped.json"))
+            self.assertEqual(scrapped["final_state"]["sample"]["status"], "scrapped")
+            self.assertIs(scrapped["final_state"]["sample"]["retested"], True)
+            self.assertEqual(
+                [call["port"] for call in scrapped["port_calls"]],
+                ["bench", "qc", "bench", "qc", "report"],
+            )
+            self.assertEqual(
+                scrapped["timers"],
+                [
+                    {"token": "t1", "handler": "due", "fire_at_ns": 3_600_000_000_000,
+                     "outcome": "cancelled", "name": "due-once"},
+                    {"token": "t2", "handler": "retest", "fire_at_ns": 6_000_000_000,
+                     "outcome": "fired", "name": "retest-once"},
+                    {"token": "t3", "handler": "due", "fire_at_ns": 3_606_000_000_000,
+                     "outcome": "cancelled", "name": "due-retest"},
+                ],
+            )
+            retest_busy = _artifact(os.path.join(directory, "qc-fail-retest-busy.json"))
+            self.assertEqual(retest_busy["final_state"]["sample"]["status"], "dropped")
+            # A busy bench on the retest scraps it; no second qc is attempted.
+            self.assertEqual(
+                [call["port"] for call in retest_busy["port_calls"]],
+                ["bench", "qc", "bench", "report"],
+            )
+
+    def test_malformed_bodies_are_clean_faults(self):
+        """A bad arrival is `bad_value`, not a KeyError surfacing as
+        `handler_error`. Both are exit 2, but only one tells you what is wrong."""
+        cases = {
+            "missing_sample": {"kind": "blood"},
+            "missing_kind": {"sample": "s1"},
+            "sample_not_a_string": {"sample": 7, "kind": "blood"},
+            "empty_sample": {"sample": "", "kind": "blood"},
+            "body_is_a_list": ["s1", "blood"],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            for name, body in cases.items():
+                with self.subTest(body=name):
+                    case = json.loads(_read(RELEASE))
+                    case["name"] = "glass-bad"
+                    case["namespace"] = "sim-glass-bad"
+                    case["arrivals"] = [{"at_ns": 0, "handler": "receive", "body": body}]
+                    case["assertions"] = [{"op": "fault_is", "code": "bad_value"}]
+                    case_path = os.path.join(directory, name + ".json")
+                    write_json(case_path, case)
+                    out = os.path.join(directory, name + "-out.json")
+                    proc = run_glass(case_path, "sim-glass-bad", out)
+                    text = proc.stdout + proc.stderr + _read(out)
+                    self.assertEqual(proc.returncode, 2, text)
+                    art = _artifact(out)
+                    self.assertEqual(art["fault"]["code"], "bad_value", name)
+                    # Nothing reached the bench.
+                    self.assertEqual(art["port_calls"], [])
+
+    def test_reading_without_a_usable_value_is_ignored(self):
+        """A reading with no value is not a reading. The sample stays running and
+        the due timer still files it overdue rather than raising."""
+        with tempfile.TemporaryDirectory() as directory:
+            case = json.loads(_read(RELEASE))
+            case["name"] = "glass-novalue"
+            case["namespace"] = "sim-glass-novalue"
+            case["arrivals"] = [
+                {"at_ns": 0, "handler": "receive", "body": {"sample": "s1", "kind": "blood"}},
+                {"at_ns": 1_000_000_000, "handler": "reading", "body": {"sample": "s1"}},
+            ]
+            case["ports"]["report"]["replies"] = [
+                {"match": {"disposition": "overdue"}, "response": {"status": "filed"}, "repeat": 1}
+            ]
+            case["assertions"] = [
+                {"op": "port_not_called", "port": "qc"},
+                {"op": "port_called", "port": "report", "times": 1, "match": {"disposition": "overdue"}},
+                {"op": "state_is", "path": "sample.status", "value": "overdue"},
+            ]
+            case_path = os.path.join(directory, "novalue.json")
+            write_json(case_path, case)
+            out = os.path.join(directory, "novalue-out.json")
+            proc = run_glass(case_path, "sim-glass-novalue", out)
+            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr + _read(out))
+            art = _artifact(out)
+            self.assertEqual(art["status"], "passed")
+            self.assertEqual(art["final_state"]["sample"]["status"], "overdue")
+
+    def test_reading_with_a_non_integer_value_faults(self):
+        with tempfile.TemporaryDirectory() as directory:
+            case = json.loads(_read(RELEASE))
+            case["name"] = "glass-badvalue"
+            case["namespace"] = "sim-glass-badvalue"
+            case["arrivals"] = [
+                {"at_ns": 0, "handler": "receive", "body": {"sample": "s1", "kind": "blood"}},
+                {"at_ns": 1_000_000_000, "handler": "reading", "body": {"sample": "s1", "value": "high"}},
+            ]
+            case["assertions"] = [{"op": "fault_is", "code": "bad_value"}]
+            case_path = os.path.join(directory, "badvalue.json")
+            write_json(case_path, case)
+            out = os.path.join(directory, "badvalue-out.json")
+            proc = run_glass(case_path, "sim-glass-badvalue", out)
+            self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr + _read(out))
+            art = _artifact(out)
+            self.assertEqual(art["fault"]["code"], "bad_value")
+            self.assertEqual([call["port"] for call in art["port_calls"]], ["bench"])
+
     def test_replay_hides_the_sentinel_and_mismatch_does_too(self):
         with tempfile.TemporaryDirectory() as directory:
             scripted = os.path.join(directory, "scripted.json")
