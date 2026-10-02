@@ -145,6 +145,36 @@ class ScriptTest(unittest.TestCase):
             self.assertEqual(art["status"], "passed")
             self.assertEqual(art["final_state"]["sample"]["status"], "overdue")
 
+    def test_stale_reading_with_a_bad_value_is_still_ignored(self):
+        """A delivery for a sample that is no longer running is dropped before
+        its value is inspected. Validating first would fault the run over a
+        field nobody was going to read."""
+        with tempfile.TemporaryDirectory() as directory:
+            case = json.loads(_read(RELEASE))
+            case["name"] = "glass-stale"
+            case["namespace"] = "sim-glass-stale"
+            case["arrivals"] = [
+                {"at_ns": 0, "handler": "receive", "body": {"sample": "s1", "kind": "blood"}},
+                # Releases the sample, so the next reading is stale.
+                {"at_ns": 1_000_000_000, "handler": "reading", "body": {"sample": "s1", "value": 42}},
+                # Same sample, now released, with a value that is not an integer.
+                {"at_ns": 2_000_000_000, "handler": "reading", "body": {"sample": "s1", "value": "bad"}},
+            ]
+            case["assertions"] = [
+                {"op": "port_called", "port": "qc", "times": 1},
+                {"op": "port_called", "port": "report", "times": 1, "match": {"disposition": "released"}},
+                {"op": "state_is", "path": "sample.status", "value": "released"},
+                {"op": "stopped", "reason": "quiescence"},
+            ]
+            case_path = os.path.join(directory, "stale.json")
+            write_json(case_path, case)
+            out = os.path.join(directory, "stale-out.json")
+            proc = run_glass(case_path, "sim-glass-stale", out)
+            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr + _read(out))
+            art = _artifact(out)
+            self.assertEqual(art["status"], "passed")
+            self.assertNotIn("fault", art)
+
     def test_reading_with_a_non_integer_value_faults(self):
         with tempfile.TemporaryDirectory() as directory:
             case = json.loads(_read(RELEASE))

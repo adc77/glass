@@ -52,15 +52,14 @@ def _same(row, body):
 
 
 def _observed(body):
-    """A reading body needs a `sample` and an integer `value`.
+    """The integer `value` on a reading body, or None if this is not a reading.
 
-    Returns the value, or None when the body is not a reading at all. A body
-    that names the right sample but carries no usable value is a fault, not a
-    silent no-op: the reading is what the bench was waiting for.
+    Called only after the sample and status checks have already passed, so a
+    stale or duplicate delivery is still ignored rather than faulting a run over
+    a field nobody was going to read. A body that claims to be a reading but
+    carries a non-integer value is a fault: the bench was waiting for a number.
     """
-    if type(body) is not dict:
-        return None
-    if "value" not in body:
+    if type(body) is not dict or "value" not in body:
         return None
     value = body["value"]
     if type(value) is not int:
@@ -163,8 +162,11 @@ def on_retry(ctx, body):
 
 def on_reading(ctx, body):
     row = _sample(ctx)
+    # Stale or duplicate deliveries are ignored before the value is inspected.
+    if row is None or row.get("status") != "running" or not _same(row, body):
+        return
     value = _observed(body)
-    if row is None or row.get("status") != "running" or value is None or not _same(row, body):
+    if value is None:
         return
     due = row.get("due")
     if type(due) is str:
