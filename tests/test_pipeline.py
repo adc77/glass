@@ -9,7 +9,6 @@ import time
 import unittest
 
 from glass.pipeline import LEAK_ADDR
-from seam.artifact import ARTIFACT_MODE
 from seam import tape_from_artifact
 from seam.canon import dumps, loads
 
@@ -92,9 +91,14 @@ class ScriptTest(unittest.TestCase):
                     self.assertTrue(data.endswith(b"\n"), name)
                     self.assertEqual(data.count(b"\n"), 1, name)
                     self.assertFalse(os.path.exists(first + ".tmp"), name)
-                    self.assertEqual(
-                        stat.S_IMODE(os.stat(first).st_mode), ARTIFACT_MODE, name
-                    )
+                    # Stated as a literal rather than imported from
+                    # seam.artifact: this is an assertion about the guarantee
+                    # glass is relying on, so reading the constant out of the
+                    # library would make it true by construction. It also keeps
+                    # glass off seam's internal symbols, which are free to move
+                    # between releases and would otherwise couple the two
+                    # repositories' CI to each other's release timing.
+                    self.assertEqual(stat.S_IMODE(os.stat(first).st_mode), 0o644, name)
             # The release case specifically, by name. Reading `first` here would
             # silently pick up whichever case the loop happened to end on.
             art = _artifact(os.path.join(directory, "release-1.json"))
