@@ -10,6 +10,11 @@ import os
 from seam import Runtime
 from seam.errors import Fault
 
+# Retry and due delays. The case files in `glass/cases` place their arrivals in
+# terms of these two numbers, so changing either one means the arrivals have to
+# move with it: a reading that arrives before the retest it is testing would
+# silently stop testing the retest. The suite fails loudly if they drift apart,
+# which is what keeps the two in step without either being derived.
 RETRY_NS = 5_000_000_000
 DUE_NS = 3_600_000_000_000
 
@@ -51,6 +56,22 @@ def _same(row, body):
     return type(body) is dict and row.get("public") == body.get("sample")
 
 
+def _observed(body):
+    """The integer `value` on a reading body, or None if this is not a reading.
+
+    Called only after the sample and status checks have already passed, so a
+    stale or duplicate delivery is still ignored rather than faulting a run over
+    a field nobody was going to read. A body that claims to be a reading but
+    carries a non-integer value is a fault: the bench was waiting for a number.
+    """
+    if type(body) is not dict or "value" not in body:
+        return None
+    value = body["value"]
+    if type(value) is not int:
+        raise Fault("bad_value")
+    return value
+
+
 def _slot(reply):
     if type(reply) is not dict or reply.get("status") not in ("ready", "busy"):
         raise Fault("bad_value")
@@ -81,14 +102,39 @@ def _file(ctx, public, disposition):
     ctx.emit("report", {"sample": public, "disposition": disposition})
 
 
+def _receipt(body):
+    """Validate an inbound arrival body.
+
+    Every other handler in this pipeline treats a body it does not recognise
+    as a no-op. `receive` used to index the body directly, so a malformed
+    arrival surfaced as a KeyError and the run ended as `handler_error` rather
+    than a clean `bad_value`. Validating here keeps the failure legible.
+    """
+    if type(body) is not dict:
+        raise Fault("bad_value")
+    sample = body.get("sample")
+    kind = body.get("kind")
+    if type(sample) is not str or sample == "" or type(kind) is not str or kind == "":
+        raise Fault("bad_value")
+    return sample, kind
+
+
+#: Address the deliberate leak in `on_receive` aims at. 203.0.113.0/24 is
+#: TEST-NET-3 (RFC 5737), reserved and unroutable, so the connection attempt
+#: always fails at `getaddrinfo` rather than depending on the network. The test
+#: suite and the CI leak check both assert on this same value, so it is named
+#: here rather than spelled out in three places.
+LEAK_ADDR = "203.0.113.1"
+LEAK_PORT = 80
+
+
 def on_receive(ctx, body):
     # One guarded leak, so this product can prove the sim process fails closed.
     if type(body) is dict and body.get("leak") == "socket":
         import socket
 
-        socket.create_connection(("203.0.113.1", 80), timeout=1)
-    public = body["sample"]
-    kind = body["kind"]
+        socket.create_connection((LEAK_ADDR, LEAK_PORT), timeout=1)
+    public, kind = _receipt(body)
     sid = ctx.id("smp")
     slot = _slot(ctx.emit("bench", {"kind": kind}))
     if slot["status"] == "busy":
@@ -114,11 +160,39 @@ def on_receive(ctx, body):
     _arm_due(ctx, public, kind, sid, slot["machine"], False, "due-once")
 
 
+def _kind(row, body):
+    """The sample kind for a retry or retest delivery.
+
+    `receive` validates its body, but `retry` and `retest` deliveries are
+    scheduled by the pipeline and only carry what the scheduler was given.
+    Anything that reaches `body["kind"]` unguarded turns a missing field into a
+    `KeyError`, which the runner reports as `handler_error` and hides the cause.
+
+    State is the authority and is consulted first. The sample's kind was fixed
+    when it was received, so a retry or retest body naming a different kind is a
+    lie about a value that cannot have changed. Preferring the body -- which this
+    did, while the docstring argued for the opposite -- meant a bench was asked
+    for one kind, replied with a machine for it, and the result was then QC'd
+    against the state's kind: a urine bench result judged as a blood result,
+    with `state["kind"]` and the machine's actual kind disagreeing in the
+    artifact. The body is only a fallback for a sample with no state kind yet.
+    """
+    if type(row) is dict:
+        kind = row.get("kind")
+        if type(kind) is str and kind:
+            return kind
+    if type(body) is dict:
+        kind = body.get("kind")
+        if type(kind) is str and kind:
+            return kind
+    raise Fault("bad_value")
+
+
 def on_retry(ctx, body):
     row = _sample(ctx)
     if row is None or row.get("status") != "queued" or not _same(row, body):
         return
-    slot = _slot(ctx.emit("bench", {"kind": body["kind"]}))
+    slot = _slot(ctx.emit("bench", {"kind": _kind(row, body)}))
     if slot["status"] == "busy":
         _file(ctx, body["sample"], "dropped")
         return
@@ -130,12 +204,16 @@ def on_retry(ctx, body):
 
 def on_reading(ctx, body):
     row = _sample(ctx)
+    # Stale or duplicate deliveries are ignored before the value is inspected.
     if row is None or row.get("status") != "running" or not _same(row, body):
+        return
+    value = _observed(body)
+    if value is None:
         return
     due = row.get("due")
     if type(due) is str:
         ctx.cancel(due)
-    verdict = ctx.emit("qc", {"kind": row["kind"], "value": body["value"]})
+    verdict = ctx.emit("qc", {"kind": row["kind"], "value": value})
     if type(verdict) is not dict or verdict.get("status") not in ("pass", "fail"):
         raise Fault("bad_value")
     if verdict["status"] == "pass":
@@ -158,7 +236,7 @@ def on_retest(ctx, body):
     row = _sample(ctx)
     if row is None or row.get("status") != "retest" or not _same(row, body):
         return
-    slot = _slot(ctx.emit("bench", {"kind": body["kind"]}))
+    slot = _slot(ctx.emit("bench", {"kind": _kind(row, body)}))
     if slot["status"] != "ready":
         _file(ctx, body["sample"], "dropped")
         return
