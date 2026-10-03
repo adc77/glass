@@ -146,11 +146,32 @@ def on_receive(ctx, body):
     _arm_due(ctx, public, kind, sid, slot["machine"], False, "due-once")
 
 
+def _kind(row, body):
+    """The sample kind for a retry or retest delivery.
+
+    `receive` validates its body, but `retry` and `retest` deliveries are
+    scheduled by the pipeline and only carry what the scheduler was given.
+    Anything that reaches `body["kind"]` unguarded turns a missing field into a
+    `KeyError`, which the runner reports as `handler_error` and hides the cause.
+    Falling back to the state's own kind is also more correct: the sample's kind
+    was fixed when it was received, and state is the authority on it.
+    """
+    if type(body) is dict:
+        kind = body.get("kind")
+        if type(kind) is str and kind:
+            return kind
+    if type(row) is dict:
+        kind = row.get("kind")
+        if type(kind) is str and kind:
+            return kind
+    raise Fault("bad_value")
+
+
 def on_retry(ctx, body):
     row = _sample(ctx)
     if row is None or row.get("status") != "queued" or not _same(row, body):
         return
-    slot = _slot(ctx.emit("bench", {"kind": body["kind"]}))
+    slot = _slot(ctx.emit("bench", {"kind": _kind(row, body)}))
     if slot["status"] == "busy":
         _file(ctx, body["sample"], "dropped")
         return
@@ -194,7 +215,7 @@ def on_retest(ctx, body):
     row = _sample(ctx)
     if row is None or row.get("status") != "retest" or not _same(row, body):
         return
-    slot = _slot(ctx.emit("bench", {"kind": body["kind"]}))
+    slot = _slot(ctx.emit("bench", {"kind": _kind(row, body)}))
     if slot["status"] != "ready":
         _file(ctx, body["sample"], "dropped")
         return

@@ -175,6 +175,70 @@ class ScriptTest(unittest.TestCase):
             self.assertEqual(art["status"], "passed")
             self.assertNotIn("fault", art)
 
+    def test_retry_without_a_kind_uses_the_state_kind(self):
+        """`on_retry` and `on_retest` used to index `body["kind"]` directly.
+
+        A delivery that names the sample but omits the kind then raised a
+        `KeyError`, which the runner reports as `handler_error` and hides the
+        real cause. State is the authority on a sample's kind anyway, since it
+        was fixed when the sample was received. The unit test below drives
+        `_kind` directly; this one covers the path through a real run.
+        """
+        with tempfile.TemporaryDirectory() as directory:
+            case = json.loads(_read(RELEASE))
+            case["name"] = "glass-kindless"
+            case["namespace"] = "sim-glass-kindless"
+            # Only the receive. The bench is busy, so the pipeline schedules its
+            # own retry, and that delivery carries no `kind`.
+            case["arrivals"] = [
+                {"at_ns": 0, "handler": "receive", "body": {"sample": "s1", "kind": "blood"}}
+            ]
+            case["ports"]["bench"]["replies"] = [
+                {"match": {"kind": "blood"}, "response": {"status": "busy"}, "repeat": 1},
+                {"match": {"kind": "blood"}, "response": {"status": "ready", "machine": "m1"}, "repeat": 1},
+            ]
+            case["ports"]["report"]["replies"] = [
+                {"match": {"disposition": "overdue"}, "response": {"status": "filed"}, "repeat": 1}
+            ]
+            case["assertions"] = [
+                # The retry must ask the bench for the sample's real kind.
+                {"op": "port_called", "port": "bench", "times": 2, "match": {"kind": "blood"}},
+                {"op": "timer_outcome", "name": "retry-once", "outcome": "fired"},
+                # No reading ever arrives, so the due timer files it overdue.
+                {"op": "port_called", "port": "report", "times": 1, "match": {"disposition": "overdue"}},
+                {"op": "state_is", "path": "sample.status", "value": "overdue"},
+                {"op": "stopped", "reason": "quiescence"},
+            ]
+            case_path = os.path.join(directory, "kindless.json")
+            write_json(case_path, case)
+            out = os.path.join(directory, "kindless-out.json")
+            proc = run_glass(case_path, "sim-glass-kindless", out)
+            text = proc.stdout + proc.stderr + _read(out)
+            self.assertEqual(proc.returncode, 0, text)
+            art = _artifact(out)
+            self.assertEqual(art["status"], "passed")
+            self.assertEqual(
+                [call["request"] for call in art["port_calls"] if call["port"] == "bench"],
+                [{"kind": "blood"}, {"kind": "blood"}],
+            )
+            # The retry that `receive` scheduled carries the kind, so this is not
+            # the kindless case. What is pinned here is that the retry asks the
+            # bench for the sample's real kind and does not fault.
+            self.assertNotIn("handler_error", text)
+
+    def test_kindless_retry_with_no_state_kind_faults_cleanly(self):
+        """If neither the body nor the state carries a kind, that is `bad_value`
+        rather than a `KeyError`."""
+        with tempfile.TemporaryDirectory() as directory:
+            from glass.pipeline import _kind
+            from seam.errors import Fault
+
+            self.assertEqual(_kind({"kind": "blood"}, {}), "blood")
+            self.assertEqual(_kind({}, {"kind": "blood"}), "blood")
+            with self.assertRaises(Fault) as raised:
+                _kind({}, {})
+            self.assertEqual(raised.exception.code, "bad_value")
+
     def test_reading_with_a_non_integer_value_faults(self):
         with tempfile.TemporaryDirectory() as directory:
             case = json.loads(_read(RELEASE))
