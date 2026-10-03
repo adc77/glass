@@ -71,7 +71,7 @@ jobs:
         working-directory: glass
         run: |
           python - <<'PY'
-          import json, os, subprocess, sys, tempfile
+          import json, os, pathlib, re, subprocess, sys, tempfile
           directory = tempfile.mkdtemp()
           case = os.path.join(directory, "leak.json")
           with open(case, "w", encoding="ascii") as handle:
@@ -106,7 +106,13 @@ jobs:
               art = json.load(handle)
           assert art["fault"]["code"] == "real_io", art
           assert art["port_calls"] == [], art
-          from glass.pipeline import LEAK_ADDR
-          assert LEAK_ADDR not in proc.stdout + proc.stderr
+          # Read the constant out of the source rather than importing it: this
+          # step's own interpreter has no seam on sys.path (only the child
+          # subprocess gets PYTHONPATH), so importing glass.pipeline here would
+          # fail on the very module under test. cwd is the glass/ checkout, so
+          # the module is one level in.
+          source = pathlib.Path("glass/pipeline.py").read_text()
+          leak_addr = re.search(r'LEAK_ADDR = "([0-9.]+)"', source).group(1)
+          assert leak_addr not in proc.stdout + proc.stderr
           print("leak fails closed:", art["fault"])
           PY
