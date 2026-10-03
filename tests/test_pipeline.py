@@ -12,7 +12,19 @@ from glass.pipeline import LEAK_ADDR
 from seam import tape_from_artifact
 from seam.canon import dumps, loads
 
-from tests.support import CASES, RELEASE, RELEASE_DIGEST, child_env, run_glass, run_proc, write_json
+from tests.support import (
+    CASES,
+    RELEASE,
+    RELEASE_DIGEST,
+    child_env,
+    run_glass,
+    run_proc,
+    write_json,
+)
+
+#: The busy case, which leaves the sample `queued` -- the only state in which a
+#: retry delivery reaches `_kind` at all.
+BUSY = CASES["busy-then-release"][1]
 
 
 def _read(path):
@@ -293,6 +305,92 @@ class ScriptTest(unittest.TestCase):
             with self.assertRaises(Fault) as raised:
                 _kind({}, {})
             self.assertEqual(raised.exception.code, "bad_value")
+
+    def test_state_outranks_a_retry_body_that_lies_about_the_kind(self):
+        """When state and body disagree, the state's kind wins.
+
+        A sample's kind is fixed when it is received, so a retry or retest body
+        naming a different kind is claiming something that cannot have changed.
+        Preferring the body meant a bench was asked for `urine`, replied with a
+        machine for `urine`, and `on_reading` then sent the state's `blood` to
+        `qc` -- a urine bench result judged against a blood reference, with the
+        request and the state disagreeing in the artifact.
+
+        The existing test only covers the two agreeing cases, which return the
+        same value under either preference, so it could not tell which one was
+        implemented.
+        """
+        from glass.pipeline import _kind
+
+        self.assertEqual(_kind({"kind": "blood"}, {"kind": "urine"}), "blood")
+        self.assertEqual(_kind({"kind": "urine"}, {"kind": "blood"}), "urine")
+        # The body is still a fallback for a row with no kind of its own.
+        self.assertEqual(_kind({}, {"kind": "blood"}), "blood")
+        # A non-string state kind does not shadow a usable body.
+        self.assertEqual(_kind({"kind": None}, {"kind": "blood"}), "blood")
+
+    def test_a_lying_retry_body_cannot_send_a_result_to_the_wrong_qc(self):
+        """End to end: the kind sent to the bench must be the sample's kind.
+
+        A retry *arrival* that names the sample but lies about its kind, arriving
+        while the sample is still `queued`. This is the only shape that reaches
+        `_kind` with the two disagreeing: `receive` builds the retry timer's own
+        body from the true kind, and a later retry against a sample `receive`
+        already moved to `running` returns before `_kind`. An earlier version of
+        this test used each of those and so passed under either implementation --
+        it could not fail, which is worth stating because it looked convincing.
+
+        With the body preferred, the bench is asked for `urine` and answers with
+        a urine machine while `state["kind"]` stays `blood`; `on_reading` then
+        sends `blood` to `qc`, judging a urine result against a blood reference.
+        """
+        with tempfile.TemporaryDirectory() as directory:
+            case = json.loads(_read(BUSY))
+            case["name"] = "glass-kind-lie"
+            case["namespace"] = "sim-glass-kind-lie"
+            # The sample's real kind is `blood`; the retry body claims `urine`.
+            case["arrivals"] = [
+                {"at_ns": 0, "handler": "receive", "body": {"sample": "s1", "kind": "blood"}},
+                {
+                    "at_ns": 1_000_000,
+                    "handler": "retry",
+                    "body": {"sample": "s1", "kind": "urine"},
+                },
+            ]
+            # The first bench call is busy, so the sample stays `queued` and the
+            # retry above is the delivery that reaches `_kind`.
+            case["ports"]["bench"]["replies"] = [
+                {"match": {"$any": True}, "response": {"status": "busy"}, "repeat": 1},
+                {"match": {"$any": True}, "response": {"status": "ready", "machine": "m9"}},
+            ]
+            case["assertions"] = [
+                {"op": "port_called", "port": "bench", "times": 2},
+            ]
+            # No reading is ever sent, so the sample ends up overdue and calls
+            # `report`; the busy case's script only matches `released`, so it is
+            # replaced to keep the run from faulting on an unmatched call.
+            case["ports"]["report"] = {
+                "mode": "script",
+                "replies": [{"match": {"$any": True}, "response": {"status": "filed"}}],
+            }
+            path = os.path.join(directory, "lie.json")
+            write_json(path, case)
+            out = os.path.join(directory, "out.json")
+            proc = run_glass(path, "sim-glass-kind-lie", out)
+            self.assertEqual(proc.returncode, 0, proc.stderr + _read(out))
+            art = _artifact(out)
+
+            bench_calls = [c for c in art["port_calls"] if c["port"] == "bench"]
+            self.assertEqual(len(bench_calls), 2, "the retry never reached the bench")
+            asked = [c["request"].get("kind") for c in bench_calls]
+            self.assertEqual(
+                asked,
+                ["blood", "blood"],
+                f"the bench was asked for {asked}, but the sample's kind is blood",
+            )
+            # And the state agrees with what was asked for, so the QC reference
+            # and the machine that produced the result match.
+            self.assertEqual(art["final_state"]["sample"]["kind"], "blood")
 
     def test_reading_with_a_non_integer_value_faults(self):
         with tempfile.TemporaryDirectory() as directory:

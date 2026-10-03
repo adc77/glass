@@ -58,6 +58,12 @@ def child_env(**values):
     }
     env["PYTHONPATH"] = os.pathsep.join(p for p in (SEAM, REPO) if p)
     env["PYTHONUNBUFFERED"] = "1"
+    # Pinned, so set and dict iteration order cannot vary between the two runs
+    # the byte-identity assertions compare. seam's `sim_env` does the same, but
+    # glass builds its child environments here, and without it those seven
+    # comparisons would pass or fail depending on the host's hash seed rather
+    # than on anything about glass.
+    env.setdefault("PYTHONHASHSEED", "0")
     for key, value in values.items():
         if value is None:
             env.pop(key, None)

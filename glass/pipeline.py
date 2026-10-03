@@ -167,15 +167,22 @@ def _kind(row, body):
     scheduled by the pipeline and only carry what the scheduler was given.
     Anything that reaches `body["kind"]` unguarded turns a missing field into a
     `KeyError`, which the runner reports as `handler_error` and hides the cause.
-    Falling back to the state's own kind is also more correct: the sample's kind
-    was fixed when it was received, and state is the authority on it.
+
+    State is the authority and is consulted first. The sample's kind was fixed
+    when it was received, so a retry or retest body naming a different kind is a
+    lie about a value that cannot have changed. Preferring the body -- which this
+    did, while the docstring argued for the opposite -- meant a bench was asked
+    for one kind, replied with a machine for it, and the result was then QC'd
+    against the state's kind: a urine bench result judged as a blood result,
+    with `state["kind"]` and the machine's actual kind disagreeing in the
+    artifact. The body is only a fallback for a sample with no state kind yet.
     """
-    if type(body) is dict:
-        kind = body.get("kind")
-        if type(kind) is str and kind:
-            return kind
     if type(row) is dict:
         kind = row.get("kind")
+        if type(kind) is str and kind:
+            return kind
+    if type(body) is dict:
+        kind = body.get("kind")
         if type(kind) is str and kind:
             return kind
     raise Fault("bad_value")
