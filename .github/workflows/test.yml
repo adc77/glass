@@ -106,6 +106,7 @@ jobs:
               art = json.load(handle)
           assert art["fault"]["code"] == "real_io", art
           assert art["port_calls"] == [], art
-          assert "203.0.113.1" not in proc.stdout + proc.stderr
+          from glass.pipeline import LEAK_ADDR
+          assert LEAK_ADDR not in proc.stdout + proc.stderr
           print("leak fails closed:", art["fault"])
           PY

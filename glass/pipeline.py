@@ -119,12 +119,21 @@ def _receipt(body):
     return sample, kind
 
 
+#: Address the deliberate leak in `on_receive` aims at. 203.0.113.0/24 is
+#: TEST-NET-3 (RFC 5737), reserved and unroutable, so the connection attempt
+#: always fails at `getaddrinfo` rather than depending on the network. The test
+#: suite and the CI leak check both assert on this same value, so it is named
+#: here rather than spelled out in three places.
+LEAK_ADDR = "203.0.113.1"
+LEAK_PORT = 80
+
+
 def on_receive(ctx, body):
     # One guarded leak, so this product can prove the sim process fails closed.
     if type(body) is dict and body.get("leak") == "socket":
         import socket
 
-        socket.create_connection(("203.0.113.1", 80), timeout=1)
+        socket.create_connection((LEAK_ADDR, LEAK_PORT), timeout=1)
     public, kind = _receipt(body)
     sid = ctx.id("smp")
     slot = _slot(ctx.emit("bench", {"kind": kind}))

@@ -8,6 +8,8 @@ import tempfile
 import time
 import unittest
 
+from glass.pipeline import LEAK_ADDR
+from seam.artifact import ARTIFACT_MODE
 from seam import tape_from_artifact
 from seam.canon import dumps, loads
 
@@ -67,18 +69,35 @@ class ScriptTest(unittest.TestCase):
                 self.assertEqual(proc.stderr, "")
                 self.assertEqual(proc.stdout.strip(), os.path.abspath(out))
 
-            first = os.path.join(directory, "release.json")
-            second = os.path.join(directory, "release-again.json")
-            again = run_glass(RELEASE, "sim-glass-release", second)
-            self.assertEqual(again.returncode, 0, again.stderr)
-            data = _read(first).encode("ascii")
-            self.assertEqual(data, _read(second).encode("ascii"))
-            self.assertTrue(data.endswith(b"\n"))
-            self.assertEqual(data.count(b"\n"), 1)
-            self.assertFalse(os.path.exists(first + ".tmp"))
-            mode = stat.S_IMODE(os.stat(first).st_mode)
-            self.assertEqual(mode, 0o644)
-            art = _artifact(first)
+            # Every case is checked for cross-process byte identity, not just
+            # the release. Checking one case left the other six free to become
+            # non-deterministic without anything noticing, and they are the ones
+            # whose arrival times encode the pipeline's own delays.
+            for name, (namespace, case) in CASES.items():
+                with self.subTest(case=name):
+                    first = os.path.join(directory, name + "-1.json")
+                    second = os.path.join(directory, name + "-2.json")
+                    one = run_glass(case, namespace, first)
+                    two = run_glass(case, namespace, second)
+                    self.assertEqual(one.returncode, 0, one.stderr)
+                    self.assertEqual(two.returncode, 0, two.stderr)
+                    self.assertEqual(
+                        _read(first).encode("ascii"),
+                        _read(second).encode("ascii"),
+                        f"{name}: two runs in separate processes differ",
+                    )
+                    # Byte hygiene on the artifact itself: exactly one trailing
+                    # newline, no leftover temp file, and the documented mode.
+                    data = _read(first).encode("ascii")
+                    self.assertTrue(data.endswith(b"\n"), name)
+                    self.assertEqual(data.count(b"\n"), 1, name)
+                    self.assertFalse(os.path.exists(first + ".tmp"), name)
+                    self.assertEqual(
+                        stat.S_IMODE(os.stat(first).st_mode), ARTIFACT_MODE, name
+                    )
+            # The release case specifically, by name. Reading `first` here would
+            # silently pick up whichever case the loop happened to end on.
+            art = _artifact(os.path.join(directory, "release-1.json"))
             self.assertEqual(art["digest"], RELEASE_DIGEST)
             self.assertEqual(art["final_state"]["sample"]["status"], "released")
             self.assertEqual(art["clock"]["end_ns"], 1_000_000_000)
@@ -395,7 +414,7 @@ class ScriptTest(unittest.TestCase):
             out = os.path.join(directory, "leak-out.json")
             proc = run_glass(case_path, "sim-glass-leak", out, timeout=5)
             text = proc.stdout + proc.stderr + _read(out)
-            self.assertNotIn("203.0.113.1", text)
+            self.assertNotIn(LEAK_ADDR, text)
             self.assertEqual(proc.returncode, 2, text)
             art = _artifact(out)
             self.assertEqual(art["fault"]["code"], "real_io")
