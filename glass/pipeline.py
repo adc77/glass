@@ -10,6 +10,11 @@ import os
 from seam import Runtime
 from seam.errors import Fault
 
+# Retry and due delays. The case files in `glass/cases` place their arrivals in
+# terms of these two numbers, so changing either one means the arrivals have to
+# move with it: a reading that arrives before the retest it is testing would
+# silently stop testing the retest. The suite fails loudly if they drift apart,
+# which is what keeps the two in step without either being derived.
 RETRY_NS = 5_000_000_000
 DUE_NS = 3_600_000_000_000
 

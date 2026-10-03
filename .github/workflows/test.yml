@@ -56,11 +56,14 @@ jobs:
             python -m glass
           done
           cmp "$RUNNER_TEMP/release-1.json" "$RUNNER_TEMP/release-2.json"
-          python - "$RUNNER_TEMP/release-1.json" <<'PY'
+          # The expected digest comes from the suite, so there is one place to
+          # change it rather than three.
+          PYTHONPATH=".:../seam" python - "$RUNNER_TEMP/release-1.json" <<'PY'
           import json, sys
+          from tests.support import RELEASE_DIGEST
           art = json.load(open(sys.argv[1]))
           assert art["status"] == "passed", art
-          assert art["digest"] == "7864660de112c64315df7ac8519f8ce9a97df6428a7653059b8a67c2d2ea7cd7", art["digest"]
+          assert art["digest"] == RELEASE_DIGEST, (art["digest"], RELEASE_DIGEST)
           print("glass release ok:", art["digest"])
           PY
 

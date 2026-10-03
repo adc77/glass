@@ -24,6 +24,38 @@ def _artifact(path):
 
 
 class ScriptTest(unittest.TestCase):
+    def test_case_arrivals_are_in_step_with_the_pipeline_delays(self):
+        """Every arrival has to be placed relative to `RETRY_NS` and `DUE_NS`.
+
+        The case files carry literal nanosecond offsets. Those literals only mean
+        anything in combination with the two constants: an arrival at 6e9 is
+        "just after the retry timer" only because `RETRY_NS` is 5e9. Changing a
+        constant without moving the arrivals would quietly stop testing the
+        branch it was written for, so the relationship is asserted here rather
+        than left implicit.
+
+        What is checked here is only what the constants themselves imply: nothing
+        arrives at or after the due deadline, since the run would stop there, and
+        every arrival is distinct, since two at the same nanosecond would be
+        ordered by insertion rather than by time.
+        """
+        from glass.pipeline import DUE_NS, RETRY_NS
+
+        self.assertGreater(DUE_NS, RETRY_NS)
+        for name, (_namespace, path) in CASES.items():
+            with self.subTest(case=name):
+                case = json.loads(_read(path))
+                ats = [item["at_ns"] for item in case["arrivals"]]
+                self.assertEqual(len(set(ats)), len(ats), f"{name}: duplicate arrival time")
+                for at_ns in ats:
+                    # The run stops at the deadline, so an arrival at or after it
+                    # would never be delivered and the case would quietly stop
+                    # testing whatever that arrival was for.
+                    self.assertLess(
+                        at_ns, DUE_NS, f"{name}: arrival {at_ns} is at or past the due deadline"
+                    )
+                    self.assertGreaterEqual(at_ns, 0, f"{name}: negative arrival {at_ns}")
+
     def test_cases_pass_and_release_is_byte_stable(self):
         with tempfile.TemporaryDirectory() as directory:
             log = os.path.join(directory, "factories.log")
