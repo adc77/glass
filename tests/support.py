@@ -32,10 +32,11 @@ def _find_seam():
 SEAM = _find_seam()
 CASE_DIR = os.path.join(REPO, "glass", "cases")
 RELEASE = os.path.join(CASE_DIR, "release.json")
-RELEASE_DIGEST = "7864660de112c64315df7ac8519f8ce9a97df6428a7653059b8a67c2d2ea7cd7"
+RELEASE_DIGEST = "16ebebf107c50ca96d9c436ccaef2ff2b1e7fe2e872fb6dcd2ba77db146003f7"
 
 CASES = {
     "release": ("sim-glass-release", os.path.join(CASE_DIR, "release.json")),
+    "lost-report-ack": ("sim-glass-lost-ack", os.path.join(CASE_DIR, "lost_report_ack.json")),
     "busy-then-release": ("sim-glass-busy", os.path.join(CASE_DIR, "busy_then_release.json")),
     "fail-then-release": ("sim-glass-fail", os.path.join(CASE_DIR, "fail_then_release.json")),
     "overdue": ("sim-glass-overdue", os.path.join(CASE_DIR, "overdue.json")),

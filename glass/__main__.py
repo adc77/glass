@@ -29,6 +29,7 @@ def entry():
     raw = os.environ.get("GLASS_BODY")
     if raw:
         rt.deliver("receive", loads(raw))
+    rt.close()
     return 0
 
 

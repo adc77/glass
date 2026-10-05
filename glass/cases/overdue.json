@@ -5,7 +5,7 @@
   "seed": 1842,
   "namespace": "sim-glass-overdue",
   "clock": {"start_ns": 0, "epoch": "1970-01-01T00:00:00Z"},
-  "initial_state": {},
+  "initial_state": {"samples": {}},
   "arrivals": [
     {"at_ns": 0, "handler": "receive", "body": {"sample": "s1", "kind": "blood"}}
   ],
@@ -35,8 +35,8 @@
     {"op": "port_not_called", "port": "qc"},
     {"op": "port_called", "port": "report", "times": 1, "match": {"disposition": "overdue"}},
     {"op": "event_count", "handler": "reading", "times": 0},
-    {"op": "timer_outcome", "name": "due-once", "outcome": "fired"},
-    {"op": "state_is", "path": "sample.status", "value": "overdue"},
+    {"op": "timer_outcome", "name": "due-once-smp_8f2a50d0aa7c8057", "outcome": "fired"},
+    {"op": "state_is", "path": "samples.s1.status", "value": "overdue"},
     {"op": "stopped", "reason": "quiescence"}
   ]
 }

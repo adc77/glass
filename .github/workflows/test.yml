@@ -17,7 +17,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        python: ["3.13", "3.14"]
+        python: ["3.11", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -34,6 +34,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: adc77/seam
+          ref: f20a79959432e88dd1ef880a328796e0cabdfc78
           path: seam
 
       - name: Show the interpreter
@@ -80,7 +81,7 @@ jobs:
                       "format": "seam-case", "version": 1, "name": "glass-leak",
                       "seed": 1842, "namespace": "sim-glass-ci-leak",
                       "clock": {"start_ns": 0, "epoch": "1970-01-01T00:00:00Z"},
-                      "initial_state": {},
+                      "initial_state": {"samples": {}},
                       "arrivals": [{"at_ns": 0, "handler": "receive",
                                     "body": {"sample": "s1", "kind": "blood", "leak": "socket"}}],
                       "ports": {
@@ -115,4 +116,24 @@ jobs:
           leak_addr = re.search(r'LEAK_ADDR = "([0-9.]+)"', source).group(1)
           assert leak_addr not in proc.stdout + proc.stderr
           print("leak fails closed:", art["fault"])
+          PY
+
+      - name: Installed Glass runs with its pinned SDK dependency
+        working-directory: glass
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build --wheel --outdir "$RUNNER_TEMP/dist"
+          python -m pip install --force-reinstall "$RUNNER_TEMP"/dist/*.whl
+          cd "$RUNNER_TEMP"
+          env -u PYTHONPATH python - <<'PY'
+          import pathlib
+          import glass
+          from seam import run_product
+          root = pathlib.Path(glass.__file__).resolve().parent
+          assert "site-packages" in root.parts, root
+          case = root / "cases/lost_report_ack.json"
+          result = run_product("glass", str(case), "sim-glass-lost-ack", "lost-ack.json")
+          assert result.returncode == 0, (result.returncode, result.stderr, result.artifact)
+          assert len(result.artifact["backend_states"]["report"]["filed"]) == 1
+          print("installed Glass proof ok")
           PY
