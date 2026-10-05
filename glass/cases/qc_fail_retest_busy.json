@@ -5,7 +5,7 @@
   "seed": 1842,
   "namespace": "sim-glass-retest-busy",
   "clock": {"start_ns": 0, "epoch": "1970-01-01T00:00:00Z"},
-  "initial_state": {},
+  "initial_state": {"samples": {}},
   "arrivals": [
     {"at_ns": 0, "handler": "receive", "body": {"sample": "s1", "kind": "blood"}},
     {"at_ns": 1000000000, "handler": "reading", "body": {"sample": "s1", "value": 42}}
@@ -36,8 +36,8 @@
     {"op": "port_called", "port": "bench", "times": 2},
     {"op": "port_called", "port": "qc", "times": 1},
     {"op": "port_called", "port": "report", "times": 1, "match": {"disposition": "dropped"}},
-    {"op": "timer_outcome", "name": "retest-once", "outcome": "fired"},
-    {"op": "state_is", "path": "sample.status", "value": "dropped"},
+    {"op": "timer_outcome", "name": "retest-once-smp_8f2a50d0aa7c8057", "outcome": "fired"},
+    {"op": "state_is", "path": "samples.s1.status", "value": "dropped"},
     {"op": "stopped", "reason": "quiescence"}
   ]
 }

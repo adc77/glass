@@ -1,0 +1,38 @@
+{
+  "format": "seam-case",
+  "version": 2,
+  "name": "lost-report-ack",
+  "seed": 1842,
+  "namespace": "sim-glass-lost-ack",
+  "clock": {"start_ns": 0, "epoch": "1970-01-01T00:00:00Z"},
+  "initial_state": {"samples": {}},
+  "config": {"lose_first_report_ack": true},
+  "datasets": {
+    "reports": {
+      "path": "report_store.json",
+      "sha256": "c65295ad390eeae39c541c365989841af586feec0e86ac81b7e29fad8de410da",
+      "as_of_ns": 0
+    }
+  },
+  "arrivals": [
+    {"at_ns": 0, "handler": "receive", "body": {"sample": "s1", "kind": "blood"}},
+    {"at_ns": 1000000000, "handler": "reading", "body": {"sample": "s1", "value": 42}}
+  ],
+  "ports": {
+    "bench": {"mode": "script", "replies": [
+      {"match": {"kind": "blood"}, "response": {"status": "ready", "machine": "m1"}}
+    ]},
+    "qc": {"mode": "script", "replies": [
+      {"match": {"kind": "blood", "value": 42}, "response": {"status": "pass"}}
+    ]},
+    "report": {"mode": "backend", "dataset": "reports"}
+  },
+  "stop": {"when": "quiescence"},
+  "assertions": [
+    {"op": "port_called", "port": "report", "times": 2},
+    {"op": "state_is", "path": "samples.s1.status", "value": "released"},
+    {"op": "state_is", "path": "samples.s1.report_attempts", "value": 2},
+    {"op": "event_count", "handler": "due", "times": 0}
+  ],
+  "grader": "glass.grade:one_filed_report"
+}

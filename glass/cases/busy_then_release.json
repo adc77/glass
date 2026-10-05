@@ -5,7 +5,7 @@
   "seed": 1842,
   "namespace": "sim-glass-busy",
   "clock": {"start_ns": 0, "epoch": "1970-01-01T00:00:00Z"},
-  "initial_state": {},
+  "initial_state": {"samples": {}},
   "arrivals": [
     {"at_ns": 0, "handler": "receive", "body": {"sample": "s1", "kind": "blood"}},
     {"at_ns": 6000000000, "handler": "reading", "body": {"sample": "s1", "value": 42}}
@@ -35,9 +35,9 @@
   "assertions": [
     {"op": "port_called", "port": "bench", "times": 2},
     {"op": "port_called", "port": "report", "times": 1, "match": {"disposition": "released"}},
-    {"op": "timer_outcome", "name": "retry-once", "outcome": "fired"},
-    {"op": "timer_outcome", "name": "due-once", "outcome": "cancelled"},
-    {"op": "state_is", "path": "sample.status", "value": "released"},
+    {"op": "timer_outcome", "name": "retry-once-smp_8f2a50d0aa7c8057", "outcome": "fired"},
+    {"op": "timer_outcome", "name": "due-once-smp_8f2a50d0aa7c8057", "outcome": "cancelled"},
+    {"op": "state_is", "path": "samples.s1.status", "value": "released"},
     {"op": "stopped", "reason": "quiescence"}
   ]
 }

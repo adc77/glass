@@ -5,7 +5,7 @@
   "seed": 1842,
   "namespace": "sim-glass-release",
   "clock": {"start_ns": 0, "epoch": "1970-01-01T00:00:00Z"},
-  "initial_state": {},
+  "initial_state": {"samples": {}},
   "arrivals": [
     {"at_ns": 0, "handler": "receive", "body": {"sample": "s1", "kind": "blood"}},
     {"at_ns": 1000000000, "handler": "reading", "body": {"sample": "s1", "value": 42}}
@@ -36,10 +36,10 @@
     {"op": "port_called", "port": "qc", "times": 1},
     {"op": "port_called", "port": "report", "times": 1, "match": {"disposition": "released"}},
     {"op": "event_count", "handler": "due", "times": 0},
-    {"op": "timer_outcome", "name": "due-once", "outcome": "cancelled"},
-    {"op": "state_is", "path": "sample.status", "value": "released"},
-    {"op": "state_is", "path": "sample.id", "value": "smp_8f2a50d0aa7c8057"},
-    {"op": "state_is", "path": "sample.machine", "value": "m1"},
+    {"op": "timer_outcome", "name": "due-once-smp_8f2a50d0aa7c8057", "outcome": "cancelled"},
+    {"op": "state_is", "path": "samples.s1.status", "value": "released"},
+    {"op": "state_is", "path": "samples.s1.id", "value": "smp_8f2a50d0aa7c8057"},
+    {"op": "state_is", "path": "samples.s1.machine", "value": "m1"},
     {"op": "stopped", "reason": "quiescence"}
   ]
 }

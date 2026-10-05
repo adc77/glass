@@ -1,11 +1,16 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "glass"
-version = "0.1.0"
+version = "0.2.0"
 description = "A lab-sample pipeline that adopts the seam SDK."
 requires-python = ">=3.11"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 readme = "README.md"
+dependencies = ["seam @ git+https://github.com/adc77/seam.git@7bfec4ef7138d54d6563838e2f9d1166b819a2f6"]
 
 [tool.setuptools.packages.find]
 include = ["glass*"]

@@ -1,30 +1,22 @@
-"""Lab sample pipeline. A seam product, not the checkout proof.
-
-A sample arrives, an instrument takes it or the bench retries once, a reading
-is judged, and a report is filed once. A due timer scraps a sample that never
-comes back. Time, ids, and outbound calls go through the seam context.
-"""
+"""Lab samples share one runtime and retain independent processing and reporting state."""
 
 import os
 
-from seam import Runtime
-from seam.errors import Fault
+from seam import Fault, PortError, Runtime
+from glass.backends import report_store
 
-# Retry and due delays. The case files in `glass/cases` place their arrivals in
-# terms of these two numbers, so changing either one means the arrivals have to
-# move with it: a reading that arrives before the retest it is testing would
-# silently stop testing the retest. The suite fails loudly if they drift apart,
-# which is what keeps the two in step without either being derived.
 RETRY_NS = 5_000_000_000
 DUE_NS = 3_600_000_000_000
+REPORT_ATTEMPTS = 2
+LEAK_ADDR = "203.0.113.1"
+LEAK_PORT = 80
 
 
 def _mark(port):
     path = os.environ.get("GLASS_FACTORY_LOG")
-    if not path:
-        return
-    with open(path, "a", encoding="ascii") as handle:
-        handle.write(port + "\n")
+    if path:
+        with open(path, "a", encoding="ascii") as handle:
+            handle.write(port + "\n")
 
 
 def make_bench():
@@ -42,231 +34,211 @@ def make_report():
     return lambda request: {"status": "filed"}
 
 
-def _sample(ctx):
-    current = ctx.state
-    if type(current) is not dict:
-        return None
-    row = current.get("sample")
-    if type(row) is not dict:
-        return None
-    return row
-
-
-def _same(row, body):
-    return type(body) is dict and row.get("public") == body.get("sample")
-
-
-def _observed(body):
-    """The integer `value` on a reading body, or None if this is not a reading.
-
-    Called only after the sample and status checks have already passed, so a
-    stale or duplicate delivery is still ignored rather than faulting a run over
-    a field nobody was going to read. A body that claims to be a reading but
-    carries a non-integer value is a fault: the bench was waiting for a number.
-    """
-    if type(body) is not dict or "value" not in body:
-        return None
-    value = body["value"]
-    if type(value) is not int:
+def _samples(ctx):
+    state = ctx.state
+    if type(state) is not dict or type(state.get("samples")) is not dict:
         raise Fault("bad_value")
-    return value
+    samples = state["samples"]
+    for public, row in samples.items():
+        if type(row) is not dict or row.get("public") != public:
+            raise Fault("bad_value")
+        if any(type(row.get(key)) is not str or not row[key] for key in ("id", "kind", "status")):
+            raise Fault("bad_value")
+        if type(row.get("retested")) is not bool or type(row.get("report_attempts")) is not int:
+            raise Fault("bad_value")
+        if row["status"] == "running" and (
+            type(row.get("due")) is not str or type(row.get("machine")) is not str
+        ):
+            raise Fault("bad_value")
+        if row["status"] == "report_pending" and type(row.get("disposition")) is not str:
+            raise Fault("bad_value")
+    return samples
+
+
+def _sample(ctx, body):
+    if type(body) is not dict or type(body.get("sample")) is not str:
+        return None
+    return _samples(ctx).get(body["sample"])
+
+
+def _save(ctx, row):
+    samples = _samples(ctx)
+    samples[row["public"]] = row
+    ctx.set_state({"samples": samples})
+
+
+def _timer_name(row, purpose):
+    return f"{purpose}-{row['id']}"
+
+
+def _receipt(body):
+    if type(body) is not dict:
+        raise Fault("bad_value")
+    public, kind = body.get("sample"), body.get("kind")
+    if type(public) is not str or not public or type(kind) is not str or not kind:
+        raise Fault("bad_value")
+    return public, kind
 
 
 def _slot(reply):
     if type(reply) is not dict or reply.get("status") not in ("ready", "busy"):
         raise Fault("bad_value")
-    if reply["status"] == "ready" and type(reply.get("machine")) is not str:
+    if reply["status"] == "ready" and (
+        type(reply.get("machine")) is not str or not reply["machine"]
+    ):
         raise Fault("bad_value")
     return reply
 
 
-def _arm_due(ctx, public, kind, sid, machine, retested, due_name):
-    token = ctx.schedule_after(DUE_NS, "due", {"sample": public}, name=due_name)
-    ctx.set_state(
-        {
-            "sample": {
-                "id": sid,
-                "public": public,
-                "kind": kind,
-                "status": "running",
-                "machine": machine,
-                "retested": retested,
-                "due": token,
-            }
-        }
+def _arm_due(ctx, row, machine, retested, purpose):
+    row["due"] = ctx.schedule_after(
+        DUE_NS, "due", {"sample": row["public"]}, name=_timer_name(row, purpose)
     )
+    row.update(status="running", machine=machine, retested=retested)
+    _save(ctx, row)
 
 
-def _file(ctx, public, disposition):
-    ctx.patch("sample.status", disposition)
-    ctx.emit("report", {"sample": public, "disposition": disposition})
+def _report_failed(ctx, row):
+    if row["report_attempts"] >= REPORT_ATTEMPTS:
+        row["status"] = "report_failed"
+    else:
+        row["report_retry"] = ctx.schedule_after(
+            RETRY_NS,
+            "report_retry",
+            {"sample": row["public"]},
+            name=_timer_name(row, "report-once"),
+        )
+    _save(ctx, row)
 
 
-def _receipt(body):
-    """Validate an inbound arrival body.
-
-    Every other handler in this pipeline treats a body it does not recognise
-    as a no-op. `receive` used to index the body directly, so a malformed
-    arrival surfaced as a KeyError and the run ended as `handler_error` rather
-    than a clean `bad_value`. Validating here keeps the failure legible.
-    """
-    if type(body) is not dict:
+def _report(ctx, row):
+    row["report_attempts"] += 1
+    _save(ctx, row)
+    request = {
+        "sample": row["public"],
+        "disposition": row["disposition"],
+        "idempotency_key": f"{row['id']}/{row['disposition']}",
+    }
+    try:
+        reply = ctx.emit("report", request)
+    except PortError:
+        _report_failed(ctx, row)
+        return
+    if type(reply) is not dict or reply.get("status") not in ("filed", "failed"):
         raise Fault("bad_value")
-    sample = body.get("sample")
-    kind = body.get("kind")
-    if type(sample) is not str or sample == "" or type(kind) is not str or kind == "":
-        raise Fault("bad_value")
-    return sample, kind
+    if reply["status"] == "failed":
+        _report_failed(ctx, row)
+        return
+    row["status"] = row["disposition"]
+    _save(ctx, row)
 
 
-#: Address the deliberate leak in `on_receive` aims at. 203.0.113.0/24 is
-#: TEST-NET-3 (RFC 5737), reserved and unroutable, so the connection attempt
-#: always fails at `getaddrinfo` rather than depending on the network. The test
-#: suite and the CI leak check both assert on this same value, so it is named
-#: here rather than spelled out in three places.
-LEAK_ADDR = "203.0.113.1"
-LEAK_PORT = 80
+def _file(ctx, row, disposition):
+    row.update(status="report_pending", disposition=disposition)
+    _report(ctx, row)
 
 
 def on_receive(ctx, body):
-    # One guarded leak, so this product can prove the sim process fails closed.
     if type(body) is dict and body.get("leak") == "socket":
         import socket
 
         socket.create_connection((LEAK_ADDR, LEAK_PORT), timeout=1)
     public, kind = _receipt(body)
-    sid = ctx.id("smp")
+    existing = _samples(ctx).get(public)
+    if existing is not None:
+        if existing["kind"] != kind:
+            raise Fault("bad_value")
+        return
+    row = {
+        "id": ctx.id("smp"),
+        "public": public,
+        "kind": kind,
+        "status": "received",
+        "retested": False,
+        "report_attempts": 0,
+    }
+    _save(ctx, row)
     slot = _slot(ctx.emit("bench", {"kind": kind}))
     if slot["status"] == "busy":
-        token = ctx.schedule_after(
-            RETRY_NS,
-            "retry",
-            {"sample": public, "kind": kind},
-            name="retry-once",
+        row["retry"] = ctx.schedule_after(
+            RETRY_NS, "retry", {"sample": public}, name=_timer_name(row, "retry-once")
         )
-        ctx.set_state(
-            {
-                "sample": {
-                    "id": sid,
-                    "public": public,
-                    "kind": kind,
-                    "status": "queued",
-                    "retested": False,
-                    "retry": token,
-                }
-            }
-        )
+        row["status"] = "queued"
+        _save(ctx, row)
         return
-    _arm_due(ctx, public, kind, sid, slot["machine"], False, "due-once")
-
-
-def _kind(row, body):
-    """The sample kind for a retry or retest delivery.
-
-    `receive` validates its body, but `retry` and `retest` deliveries are
-    scheduled by the pipeline and only carry what the scheduler was given.
-    Anything that reaches `body["kind"]` unguarded turns a missing field into a
-    `KeyError`, which the runner reports as `handler_error` and hides the cause.
-
-    State is the authority and is consulted first. The sample's kind was fixed
-    when it was received, so a retry or retest body naming a different kind is a
-    lie about a value that cannot have changed. Preferring the body -- which this
-    did, while the docstring argued for the opposite -- meant a bench was asked
-    for one kind, replied with a machine for it, and the result was then QC'd
-    against the state's kind: a urine bench result judged as a blood result,
-    with `state["kind"]` and the machine's actual kind disagreeing in the
-    artifact. The body is only a fallback for a sample with no state kind yet.
-    """
-    if type(row) is dict:
-        kind = row.get("kind")
-        if type(kind) is str and kind:
-            return kind
-    if type(body) is dict:
-        kind = body.get("kind")
-        if type(kind) is str and kind:
-            return kind
-    raise Fault("bad_value")
+    _arm_due(ctx, row, slot["machine"], False, "due-once")
 
 
 def on_retry(ctx, body):
-    row = _sample(ctx)
-    if row is None or row.get("status") != "queued" or not _same(row, body):
+    row = _sample(ctx, body)
+    if row is None or row["status"] != "queued":
         return
-    slot = _slot(ctx.emit("bench", {"kind": _kind(row, body)}))
+    slot = _slot(ctx.emit("bench", {"kind": row["kind"]}))
     if slot["status"] == "busy":
-        _file(ctx, body["sample"], "dropped")
+        _file(ctx, row, "dropped")
         return
-    token = ctx.schedule_after(DUE_NS, "due", {"sample": body["sample"]}, name="due-once")
-    ctx.patch("sample.status", "running")
-    ctx.patch("sample.machine", slot["machine"])
-    ctx.patch("sample.due", token)
+    _arm_due(ctx, row, slot["machine"], False, "due-once")
 
 
 def on_reading(ctx, body):
-    row = _sample(ctx)
-    # Stale or duplicate deliveries are ignored before the value is inspected.
-    if row is None or row.get("status") != "running" or not _same(row, body):
+    row = _sample(ctx, body)
+    if row is None or row["status"] != "running" or "value" not in body:
         return
-    value = _observed(body)
-    if value is None:
-        return
-    due = row.get("due")
-    if type(due) is str:
-        ctx.cancel(due)
+    value = body["value"]
+    if type(value) is not int:
+        raise Fault("bad_value")
     verdict = ctx.emit("qc", {"kind": row["kind"], "value": value})
     if type(verdict) is not dict or verdict.get("status") not in ("pass", "fail"):
         raise Fault("bad_value")
+    ctx.cancel(row["due"])
     if verdict["status"] == "pass":
-        _file(ctx, body["sample"], "released")
-        return
-    if row.get("retested") is True:
-        _file(ctx, body["sample"], "scrapped")
-        return
-    token = ctx.schedule_after(
-        RETRY_NS,
-        "retest",
-        {"sample": body["sample"], "kind": row["kind"]},
-        name="retest-once",
-    )
-    ctx.patch("sample.status", "retest")
-    ctx.patch("sample.retest", token)
+        _file(ctx, row, "released")
+    elif row["retested"]:
+        _file(ctx, row, "scrapped")
+    else:
+        row["retest"] = ctx.schedule_after(
+            RETRY_NS, "retest", {"sample": row["public"]}, name=_timer_name(row, "retest-once")
+        )
+        row["status"] = "retest"
+        _save(ctx, row)
 
 
 def on_retest(ctx, body):
-    row = _sample(ctx)
-    if row is None or row.get("status") != "retest" or not _same(row, body):
+    row = _sample(ctx, body)
+    if row is None or row["status"] != "retest":
         return
-    slot = _slot(ctx.emit("bench", {"kind": _kind(row, body)}))
-    if slot["status"] != "ready":
-        _file(ctx, body["sample"], "dropped")
+    slot = _slot(ctx.emit("bench", {"kind": row["kind"]}))
+    if slot["status"] == "busy":
+        _file(ctx, row, "dropped")
         return
-    token = ctx.schedule_after(
-        DUE_NS,
-        "due",
-        {"sample": body["sample"]},
-        name="due-retest",
-    )
-    ctx.patch("sample.status", "running")
-    ctx.patch("sample.machine", slot["machine"])
-    ctx.patch("sample.retested", True)
-    ctx.patch("sample.due", token)
+    _arm_due(ctx, row, slot["machine"], True, "due-retest")
 
 
 def on_due(ctx, body):
-    row = _sample(ctx)
-    if row is None or row.get("status") != "running" or not _same(row, body):
-        return
-    _file(ctx, body["sample"], "overdue")
+    row = _sample(ctx, body)
+    if row is not None and row["status"] == "running":
+        _file(ctx, row, "overdue")
 
 
-def build():
-    rt = Runtime(namespace="glass")
+def on_report_retry(ctx, body):
+    row = _sample(ctx, body)
+    if row is not None and row["status"] == "report_pending":
+        _report(ctx, row)
+
+
+def build(*, report_factory=make_report):
+    rt = Runtime(namespace="glass", initial_state={"samples": {}})
     rt.port("bench", make_bench)
     rt.port("qc", make_qc)
-    rt.port("report", make_report)
-    rt.on("receive", on_receive)
-    rt.on("retry", on_retry)
-    rt.on("reading", on_reading)
-    rt.on("retest", on_retest)
-    rt.on("due", on_due)
+    rt.port("report", report_factory)
+    rt.sim_port("report", report_store)
+    for name, handler in (
+        ("receive", on_receive),
+        ("retry", on_retry),
+        ("reading", on_reading),
+        ("retest", on_retest),
+        ("due", on_due),
+        ("report_retry", on_report_retry),
+    ):
+        rt.on(name, handler)
     return rt
