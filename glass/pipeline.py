@@ -43,8 +43,7 @@ def make_report():
     return lambda request: {"status": "filed"}
 
 
-def _samples(ctx):
-    state = ctx.state
+def validate_samples(state, *, timer_tokens=True):
     if type(state) is not dict or type(state.get("samples")) is not dict:
         raise Fault("bad_value")
     samples = state["samples"]
@@ -61,8 +60,7 @@ def _samples(ctx):
         ):
             raise Fault("bad_value")
         if row["status"] == "running" and (
-            type(row.get("due")) is not str
-            or not row["due"]
+            (timer_tokens and (type(row.get("due")) is not str or not row["due"]))
             or type(row.get("machine")) is not str
             or not row["machine"]
         ):
@@ -71,6 +69,10 @@ def _samples(ctx):
             if type(row.get("disposition")) is not str or row["disposition"] not in DISPOSITIONS:
                 raise Fault("bad_value")
     return samples
+
+
+def _samples(ctx):
+    return validate_samples(ctx.state)
 
 
 def _sample(ctx, body):
@@ -248,12 +250,14 @@ def on_report_retry(ctx, body):
         _report(ctx, row)
 
 
-def build(*, report_factory=make_report):
-    rt = Runtime(namespace="glass", initial_state={"samples": {}})
-    rt.port("bench", make_bench)
-    rt.port("qc", make_qc)
+def build(*, report_factory=make_report, bench_factory=make_bench, qc_factory=make_qc,
+          runtime=None, report_backend=report_store):
+    rt = Runtime(namespace="glass", initial_state={"samples": {}}) if runtime is None else runtime
+    rt.port("bench", bench_factory)
+    rt.port("qc", qc_factory)
     rt.port("report", report_factory)
-    rt.sim_port("report", report_store)
+    if report_backend is not None:
+        rt.sim_port("report", report_backend)
     for name, handler in (
         ("receive", on_receive),
         ("retry", on_retry),

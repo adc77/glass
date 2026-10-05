@@ -28,14 +28,15 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
 
-      # Glass is not published yet, so seam comes from the repository rather
-      # than an index. Same layout the README describes for a local checkout.
       - name: Check out seam as a sibling
         uses: actions/checkout@v4
         with:
           repository: adc77/seam
-          ref: f20a79959432e88dd1ef880a328796e0cabdfc78
+          ref: ec454cbc1040ada7fed57a78ae94148c30406857
           path: seam
+
+      - name: Install Glass and its pinned SDK
+        run: python -m pip install ./glass
 
       - name: Show the interpreter
         run: python -VV
@@ -118,12 +119,12 @@ jobs:
           print("leak fails closed:", art["fault"])
           PY
 
-      - name: Installed Glass runs with its pinned SDK dependency
+      - name: Installed Glass runs with its pinned SDK
         working-directory: glass
         run: |
           python -m pip install --upgrade pip build
           python -m build --wheel --outdir "$RUNNER_TEMP/dist"
-          python -m pip install --force-reinstall "$RUNNER_TEMP"/dist/*.whl
+          python -m pip install --force-reinstall --no-deps "$RUNNER_TEMP"/dist/*.whl
           cd "$RUNNER_TEMP"
           env -u PYTHONPATH python - <<'PY'
           import pathlib
