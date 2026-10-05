@@ -8,6 +8,15 @@ from glass.backends import report_store
 RETRY_NS = 5_000_000_000
 DUE_NS = 3_600_000_000_000
 REPORT_ATTEMPTS = 2
+DISPOSITIONS = frozenset({"released", "overdue", "dropped", "scrapped"})
+SAMPLE_STATUSES = DISPOSITIONS | {
+    "received",
+    "queued",
+    "running",
+    "retest",
+    "report_pending",
+    "report_failed",
+}
 LEAK_ADDR = "203.0.113.1"
 LEAK_PORT = 80
 
@@ -46,12 +55,21 @@ def _samples(ctx):
             raise Fault("bad_value")
         if type(row.get("retested")) is not bool or type(row.get("report_attempts")) is not int:
             raise Fault("bad_value")
-        if row["status"] == "running" and (
-            type(row.get("due")) is not str or type(row.get("machine")) is not str
+        if (
+            row["status"] not in SAMPLE_STATUSES
+            or not 0 <= row["report_attempts"] <= REPORT_ATTEMPTS
         ):
             raise Fault("bad_value")
-        if row["status"] == "report_pending" and type(row.get("disposition")) is not str:
+        if row["status"] == "running" and (
+            type(row.get("due")) is not str
+            or not row["due"]
+            or type(row.get("machine")) is not str
+            or not row["machine"]
+        ):
             raise Fault("bad_value")
+        if row["status"] == "report_pending":
+            if type(row.get("disposition")) is not str or row["disposition"] not in DISPOSITIONS:
+                raise Fault("bad_value")
     return samples
 
 
@@ -112,6 +130,10 @@ def _report_failed(ctx, row):
 
 
 def _report(ctx, row):
+    if row["report_attempts"] >= REPORT_ATTEMPTS:
+        row["status"] = "report_failed"
+        _save(ctx, row)
+        return
     row["report_attempts"] += 1
     _save(ctx, row)
     request = {

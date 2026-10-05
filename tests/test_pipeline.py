@@ -244,6 +244,61 @@ class ScriptTest(unittest.TestCase):
                 self.assertEqual(proc.returncode, 2)
                 self.assertEqual(art["fault"]["code"], "bad_value")
 
+    def test_invalid_snapshot_status_counts_and_dispositions_fault_before_outbound_calls(self):
+        base = {
+            "id": "smp_test",
+            "public": "s1",
+            "kind": "blood",
+            "status": "report_pending",
+            "retested": False,
+            "report_attempts": 1,
+            "disposition": "released",
+        }
+        for change in (
+            {"status": "unknown"},
+            {"report_attempts": -1},
+            {"report_attempts": 99},
+            {"disposition": "unknown"},
+            {"disposition": []},
+            {"status": "running", "due": "t1", "machine": ""},
+        ):
+            with self.subTest(change=change):
+                case = release_case()
+                case["initial_state"] = {"samples": {"s1": {**base, **change}}}
+                case["arrivals"] = [
+                    {"at_ns": 0, "handler": "report_retry", "body": {"sample": "s1"}}
+                ]
+                case["assertions"] = []
+                proc, art = simulate(case)
+                self.assertEqual(proc.returncode, 2, proc.stderr)
+                self.assertEqual(art["fault"]["code"], "bad_value")
+                self.assertEqual(art["port_calls"], [])
+
+    def test_restored_pending_report_cannot_exceed_its_attempt_budget(self):
+        case = release_case()
+        case["initial_state"] = {
+            "samples": {
+                "s1": {
+                    "id": "smp_test",
+                    "public": "s1",
+                    "kind": "blood",
+                    "status": "report_pending",
+                    "retested": False,
+                    "report_attempts": 2,
+                    "disposition": "released",
+                }
+            }
+        }
+        case["arrivals"] = [{"at_ns": 0, "handler": "report_retry", "body": {"sample": "s1"}}]
+        case["assertions"] = [
+            {"op": "port_not_called", "port": "report"},
+            {"op": "state_is", "path": "samples.s1.status", "value": "report_failed"},
+        ]
+        proc, art = simulate(case)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(art["port_calls"], [])
+        self.assertEqual(art["final_state"]["samples"]["s1"]["report_attempts"], 2)
+
     def test_replay_keeps_future_bodies_out_of_artifacts_and_mismatch_errors(self):
         case = release_case()
         proc, original = simulate(case)
@@ -299,6 +354,45 @@ class ScriptTest(unittest.TestCase):
 
 
 class LiveTest(unittest.TestCase):
+    def test_live_report_client_initialization_timeout_is_recoverable_and_recorded(self):
+        with tempfile.TemporaryDirectory() as directory:
+            tape = Path(directory) / "live.jsonl"
+            previous = {key: os.environ.get(key) for key in ("SEAM_RECORD", "SEAM_ARTIFACT")}
+            os.environ.update(SEAM_RECORD="1", SEAM_ARTIFACT=str(tape))
+            try:
+                attempts, timers = [], []
+
+                def factory():
+                    attempts.append(1)
+                    if len(attempts) == 1:
+                        raise PortError("timeout")
+                    return lambda request: {"status": "filed"}
+
+                rt = build(report_factory=factory)
+                rt.set_timer_backend(lambda *args: timers.append(args))
+                rt.start_live()
+                rt.deliver("receive", {"sample": "s1", "kind": "blood"})
+                rt.deliver("reading", {"sample": "s1", "value": 42})
+                self.assertEqual(rt.state_copy()["samples"]["s1"]["status"], "report_pending")
+                self.assertTrue(rt.fire_timer(timers[-1][0]))
+                self.assertEqual(rt.state_copy()["samples"]["s1"]["status"], "released")
+                rt.close()
+                reports = [
+                    json.loads(line)
+                    for line in tape.read_text().splitlines()
+                    if json.loads(line)["port"] == "report"
+                ]
+                self.assertEqual(len(reports), 2)
+                self.assertEqual(reports[0]["error"], "timeout")
+                self.assertEqual(reports[0]["request"], reports[1]["request"])
+                self.assertEqual(len(attempts), 2)
+            finally:
+                for key, value in previous.items():
+                    if value is None:
+                        os.environ.pop(key, None)
+                    else:
+                        os.environ[key] = value
+
     def test_module_without_sim_exits_cleanly_and_live_receipt_is_recorded(self):
         import sys
 

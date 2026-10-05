@@ -4,7 +4,7 @@ from seam import Backend, Fault, PortError
 
 
 def report_store(data, config):
-    if type(data) is not dict or type(data.get("filed")) is not dict:
+    if type(data) is not dict or type(data.get("filed")) is not dict or type(config) is not dict:
         raise Fault("bad_value")
     filed = data["filed"]
     lose_ack = config.get("lose_first_report_ack", False)

@@ -13,7 +13,7 @@ Seam is not vendored here. Clone it as a sibling directory, which is where the t
 ```shell
 git clone https://github.com/adc77/seam.git
 git clone https://github.com/adc77/glass.git
-git -C seam checkout 7bfec4ef7138d54d6563838e2f9d1166b819a2f6
+git -C seam checkout f20a79959432e88dd1ef880a328796e0cabdfc78
 cd glass   # with ../seam present
 ```
 
@@ -60,6 +60,8 @@ print(result.artifact["backend_states"]["report"])
 `report_pending` is not `released`. Only a `filed` acknowledgment completes the intended disposition. A typed `PortError` or `failed` acknowledgment triggers one delayed retry; exhaustion leaves `report_failed`. The retry reuses the request and key. Exactly-once storage requires an external adapter that honors that key: Glass alone cannot guarantee it. Invalid acknowledgments fault instead of being treated as success.
 
 Duplicate receipts with the same sample and kind do not re-offer the sample; conflicting kinds fault. Retry handlers use stored kind, not a supplied override. Readings for inactive samples are ignored. Cases now start with `{"samples": {}}`; the old single-sample state shape is intentionally unsupported.
+
+Restored state must have recognized statuses, dispositions, and bounded attempt counts. A pending report that has already exhausted its budget cannot issue a third attempt.
 
 ## Live scaffold and limits
 

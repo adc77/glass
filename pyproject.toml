@@ -10,7 +10,7 @@ requires-python = ">=3.11"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 readme = "README.md"
-dependencies = ["seam @ git+https://github.com/adc77/seam.git@7bfec4ef7138d54d6563838e2f9d1166b819a2f6"]
+dependencies = ["seam @ git+https://github.com/adc77/seam.git@f20a79959432e88dd1ef880a328796e0cabdfc78"]
 
 [tool.setuptools.packages.find]
 include = ["glass*"]

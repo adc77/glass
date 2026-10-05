@@ -34,7 +34,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: adc77/seam
-          ref: 7bfec4ef7138d54d6563838e2f9d1166b819a2f6
+          ref: f20a79959432e88dd1ef880a328796e0cabdfc78
           path: seam
 
       - name: Show the interpreter
