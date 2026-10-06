@@ -138,3 +138,5 @@ jobs:
           assert len(result.artifact["backend_states"]["report"]["filed"]) == 1
           print("installed Glass proof ok")
           PY
+          env -u PYTHONPATH python "$GITHUB_WORKSPACE/glass/scripts/capture_proof.py" \
+            --out "$RUNNER_TEMP/durable-capture-proof" --installed

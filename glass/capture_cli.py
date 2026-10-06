@@ -7,7 +7,7 @@ from seam.errors import Refuse
 
 from glass.capture import read_bundle, run_bundle, write_case
 from glass.capture_http import serve
-from glass.lab import Lab, initial_lab
+from glass.lab import initial_lab
 from glass.live_capture import Service
 
 
@@ -30,9 +30,9 @@ def main():
     args = parser.parse_args()
     try:
         if args.command == "init":
-            Lab(
+            Service(
                 args.db,
-                snapshot=initial_lab(
+                initial_lab=initial_lab(
                     busy_remaining=args.busy_count,
                     lose_ack=not args.keep_report_ack,
                     qc_max=args.qc_max,

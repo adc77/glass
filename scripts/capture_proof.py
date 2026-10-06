@@ -36,19 +36,7 @@ def request(port, path, body=None):
         connection.close()
 
 
-def proof(root, installed):
-    if installed:
-        check(
-            "site-packages" in Path(glass.__file__).parts,
-            "proof imported source checkout",
-        )
-    root.mkdir(parents=True, mode=0o700)
-    db = root / "live.sqlite"
-    subprocess.run(
-        [sys.executable, "-m", "glass.capture_cli", "init", "--db", str(db)],
-        check=True,
-        timeout=10,
-    )
+def launch(db):
     process = subprocess.Popen(
         [
             sys.executable,
@@ -69,7 +57,33 @@ def proof(root, installed):
         check(bool(ready), "HTTP service did not start")
         line = process.stdout.readline().strip()
         check(line.startswith("glass listening on localhost:"), f"bad startup: {line}")
-        port = int(line.rsplit(":", 1)[1])
+        return process, int(line.rsplit(":", 1)[1])
+    except BaseException:
+        stop(process)
+        raise
+
+
+def stop(process):
+    process.kill()
+    _, stderr = process.communicate(timeout=5)
+    check(not stderr, f"HTTP service stderr: {stderr}")
+
+
+def proof(root, installed):
+    if installed:
+        check(
+            "site-packages" in Path(glass.__file__).parts,
+            "proof imported source checkout",
+        )
+    root.mkdir(parents=True, mode=0o700)
+    db = root / "live.sqlite"
+    subprocess.run(
+        [sys.executable, "-m", "glass.capture_cli", "init", "--db", str(db)],
+        check=True,
+        timeout=10,
+    )
+    process, port = launch(db)
+    try:
         state = request(
             port,
             "/events",
@@ -90,6 +104,13 @@ def proof(root, installed):
             },
         )
         future_ident = state["samples"]["s2"]["id"]
+        stop(process)
+        process, port = launch(db)
+        recovered = request(port, "/state")["product"]["samples"]
+        check(
+            recovered["s1"]["id"] == ident and recovered["s2"]["id"] == future_ident,
+            "restart changed IDs",
+        )
         timeout = time.monotonic() + 10
         while (
             request(port, "/state")["product"]["samples"]["s1"]["status"] != "running"
@@ -110,6 +131,8 @@ def proof(root, installed):
                 state["samples"][sample]["status"] == expected,
                 "unexpected report outcome",
             )
+        stop(process)
+        process, port = launch(db)
         timeout = time.monotonic() + 10
         while True:
             state = request(port, "/state")
@@ -130,14 +153,18 @@ def proof(root, installed):
             len(document["payload"]["product_data"]["timers"]) == 1,
             "pending retry was not exported",
         )
+        stop(process)
+        process, port = launch(db)
+        check(
+            request(port, "/capture/latest") == document,
+            "finished capture did not survive restart",
+        )
+        check(
+            request(port, "/capture/finish", {}) == document,
+            "finish retry changed the capture cutoff",
+        )
     finally:
-        process.terminate()
-        try:
-            _, stderr = process.communicate(timeout=5)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            _, stderr = process.communicate(timeout=5)
-        check(not stderr, f"HTTP service stderr: {stderr}")
+        stop(process)
     original_db = hashlib.sha256(db.read_bytes()).hexdigest()
     results = []
     for name, delay in (
@@ -186,6 +213,8 @@ def proof(root, installed):
         "private_ids_preserved": True,
         "live_database_unchanged": True,
         "counterfactual": "overdue",
+        "forced_restarts": 3,
+        "completed_capture_recovered": True,
     }
     write_new(root / "summary.json", summary)
     print(dumps(summary))

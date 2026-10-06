@@ -26,13 +26,30 @@ def make_server(service, port):
             self.wfile.write(data)
 
         def do_GET(self):
-            if self.path != "/state":
+            if self.path not in {"/state", "/capture/latest"}:
                 self.respond(404, {"error": "not_found"})
                 return
-            self.respond(200, service.snapshot())
+            try:
+                result = (
+                    service.snapshot()
+                    if self.path == "/state"
+                    else service.latest_capture()
+                )
+            except (ValueError, TypeError, Refuse) as err:
+                self.respond(400, {"error": str(err)})
+                return
+            except Fault as err:
+                self.respond(400, {"error": err.code})
+                return
+            self.respond(200, result)
 
         def do_POST(self):
-            if self.path not in {"/events", "/capture/start", "/capture/finish"}:
+            if self.path not in {
+                "/events",
+                "/capture/start",
+                "/capture/finish",
+                "/capture/abort",
+            }:
                 self.respond(404, {"error": "not_found"})
                 return
             try:
@@ -47,11 +64,12 @@ def make_server(service, port):
                 else:
                     if type(body) is not dict or body:
                         raise ValueError("capture requests require an empty object")
-                    result = (
-                        service.begin_capture()
-                        if self.path == "/capture/start"
-                        else service.finish_capture()
-                    )
+                    operation = {
+                        "/capture/start": service.begin_capture,
+                        "/capture/finish": service.finish_capture,
+                        "/capture/abort": service.abort_capture,
+                    }[self.path]
+                    result = operation()
             except (ValueError, TypeError, Refuse) as err:
                 self.respond(400, {"error": str(err)})
                 return

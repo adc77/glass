@@ -83,3 +83,25 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(self.request("POST", "/capture/finish", "{}")[0], 400)
         self.assertEqual(self.request("POST", "/unknown", "{}")[0], 404)
         self.assertEqual(self.request("GET", "/unknown")[0], 404)
+
+    def test_latest_capture_can_be_retrieved_and_finish_retried(self):
+        self.assertEqual(self.request("GET", "/capture/latest")[0], 400)
+        self.assertEqual(self.request("POST", "/capture/start", "{}")[0], 200)
+        self.assertEqual(self.receive()[0], 200)
+        status, captured = self.request("POST", "/capture/finish", "{}")
+        self.assertEqual(status, 200)
+        self.assertEqual(self.request("GET", "/capture/latest"), (200, captured))
+        self.assertEqual(self.request("POST", "/capture/finish", "{}"), (200, captured))
+
+    def test_failed_capture_can_be_explicitly_aborted(self):
+        self.assertEqual(self.receive()[0], 200)
+        self.assertEqual(self.request("POST", "/capture/start", "{}")[0], 200)
+        self.assertEqual(self.receive("changed")[0], 400)
+        self.assertEqual(
+            self.request("POST", "/capture/abort", '{"extra":true}')[0], 400
+        )
+        self.assertEqual(
+            self.request("POST", "/capture/abort", "{}"), (200, {"aborted": True})
+        )
+        self.assertEqual(self.request("POST", "/capture/start", "{}")[0], 200)
+        self.assertEqual(self.request("POST", "/capture/finish", "{}")[0], 200)

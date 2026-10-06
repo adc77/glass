@@ -90,7 +90,9 @@ class Lab:
             if request:
                 raise ValueError("invalid inspection request")
             return self.snapshot()
-        self.db.execute("BEGIN IMMEDIATE")
+        owns_transaction = not self.db.in_transaction
+        if owns_transaction:
+            self.db.execute("BEGIN IMMEDIATE")
         lost = False
         try:
             state = self.snapshot()
@@ -142,9 +144,11 @@ class Lab:
                 raise ValueError("unknown lab port")
             validate_lab(state)
             self.db.execute("UPDATE lab SET body=? WHERE id=1", (dumps(state),))
-            self.db.execute("COMMIT")
+            if owns_transaction:
+                self.db.execute("COMMIT")
         except BaseException:
-            self.db.execute("ROLLBACK")
+            if owns_transaction and self.db.in_transaction:
+                self.db.execute("ROLLBACK")
             raise
         if lost:
             raise PortError("timeout")
