@@ -1,11 +1,20 @@
 """Loopback-only capture demonstration; this is not a production HTTP server."""
 
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from socketserver import TCPServer
 
 from seam.canon import dumps, loads
 from seam.errors import Fault, Refuse
 
 MAX_REQUEST = 8192
+LOOPBACK = "127.0.0.1"
+
+
+class LoopbackServer(HTTPServer):
+    def server_bind(self):
+        TCPServer.server_bind(self)
+        self.server_name = "localhost"
+        self.server_port = self.server_address[1]
 
 
 def make_server(service, port):
@@ -78,7 +87,7 @@ def make_server(service, port):
                 return
             self.respond(200, result)
 
-    server = HTTPServer(("localhost", port), Handler)
+    server = LoopbackServer((LOOPBACK, port), Handler)
     server.timeout = 0.05
     return server
 

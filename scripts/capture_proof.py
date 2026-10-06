@@ -11,6 +11,7 @@ import time
 
 import glass
 from glass.capture import run_bundle, write_new
+from glass.capture_http import LOOPBACK
 from glass.pipeline import DUE_NS, RETRY_NS
 from seam.canon import dumps, loads
 
@@ -21,7 +22,7 @@ def check(condition, message):
 
 
 def request(port, path, body=None):
-    connection = http.client.HTTPConnection("localhost", port, timeout=5)
+    connection = http.client.HTTPConnection(LOOPBACK, port, timeout=5)
     try:
         connection.request(
             "GET" if body is None else "POST",

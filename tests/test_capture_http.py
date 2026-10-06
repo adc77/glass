@@ -5,6 +5,7 @@ from pathlib import Path
 import tempfile
 from threading import Thread
 import unittest
+from unittest.mock import patch
 
 from seam.canon import dumps, loads
 
@@ -36,7 +37,7 @@ class HttpTests(unittest.TestCase):
 
     def request(self, method, path, body=None):
         connection = http.client.HTTPConnection(
-            "localhost", self.server.server_port, timeout=3
+            self.server.server_address[0], self.server.server_port, timeout=3
         )
         try:
             connection.request(method, path, body=body)
@@ -105,3 +106,15 @@ class HttpTests(unittest.TestCase):
         )
         self.assertEqual(self.request("POST", "/capture/start", "{}")[0], 200)
         self.assertEqual(self.request("POST", "/capture/finish", "{}")[0], 200)
+
+    def test_loopback_server_does_not_need_reverse_dns_to_start(self):
+        with patch(
+            "socket.getfqdn", side_effect=AssertionError("reverse DNS is unavailable")
+        ):
+            server = make_server(self.service, 0)
+            try:
+                self.assertEqual(server.server_address[0], "127.0.0.1")
+                self.assertEqual(server.server_name, "localhost")
+                self.assertEqual(server.server_port, server.server_address[1])
+            finally:
+                server.server_close()
