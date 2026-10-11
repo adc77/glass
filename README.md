@@ -8,15 +8,15 @@ Handlers are synchronous. They take time and ids from the seam context, and the 
 
 ## Setup
 
-Seam is not vendored here. The package dependency and CI both pin the compatible Seam 0.4.0 commit `ec454cbc1040ada7fed57a78ae94148c30406857`. Keep matching checkouts as siblings:
+Seam is not vendored here. The package dependency and CI both pin the compatible Seam 0.4.1 commit `2dce4658803142dfe6a2f6d136b8594bca138b03`. Keep matching checkouts as siblings:
 
 ```shell
-git -C seam checkout ec454cbc1040ada7fed57a78ae94148c30406857
+git -C seam checkout 2dce4658803142dfe6a2f6d136b8594bca138b03
 python -m pip install ./glass
 cd glass
 ```
 
-Installation resolves that exact Git revision rather than assuming Seam 0.4.0 is on a package index. Older SDK checkouts cannot run the capture profile. If compatible checkouts live elsewhere:
+Installation resolves that exact Git revision rather than assuming Seam 0.4.1 is on a package index. Older SDK checkouts cannot run the capture profile. If compatible checkouts live elsewhere:
 
 ```shell
 SEAM_SDK_PATH=/path/to/seam python3 -m unittest discover -s tests -t .
@@ -87,6 +87,8 @@ Restart `serve` with the same database to recover samples, private IDs, deadline
 Completed captures are saved before their HTTP response is sent. If that response is lost, `GET /capture/latest` retrieves the exact frozen bundle without driving timers. Repeating `POST /capture/finish` with no active session returns the same bundle and cutoff. Only the last completed capture is retained; export it before completing another session. The database is created with mode 0600, and a product-owned file lease permits only one service writer.
 
 Recovery requires the same Python-source identity for Glass and Seam. Changed sources, invalid frames, backwards clocks, and pre-durability databases with only a lab table are refused; there is no silent reset or automatic migration. Previously volatile sample state cannot be reconstructed from lab records. Initialize a new database explicitly when beginning a new run. SDK `SEAM_RECORD=1` is refused by this service because that external recording file is outside the SQLite transaction.
+
+The Seam 0.4.1 pin fixes cold imports without widening filesystem access. Journals and captures created with the previous SDK pin (`ec454cbc1040ada7fed57a78ae94148c30406857`, Seam 0.4.0) must still use that original SDK. Keep that environment for existing runs, or explicitly initialize a separate database for new runs after upgrading; do not delete or overwrite old databases to bypass the identity check.
 
 The envelope, checksum, Python-source identity, bounded import, protected case packaging, and supervised replay come from Seam's capture API (`../seam/CAPTURE.md` in the matching sibling checkout). Glass owns schema validation, ID preservation, timer reconstruction, and the observable outcome projection. Timer tokens are restored into new SDK bindings rather than compared as business state; sample IDs and report idempotency keys are preserved exactly.
 
