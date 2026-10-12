@@ -20,6 +20,99 @@ from glass.pipeline import DUE_NS
 
 
 class GlassActorTests(unittest.TestCase):
+    def test_arrivals_before_at_and_after_horizon_are_counted_inclusively(self):
+        with tempfile.TemporaryDirectory() as directory:
+            people = [
+                person("before", start_ns=0),
+                person("at", start_ns=SECOND),
+                person("after", start_ns=SECOND + 1),
+            ]
+            result = run_scenario(
+                Path(directory) / "run", actors=people, until_ns=SECOND
+            )
+            self.assertEqual(result.returncode, 0, (result.stderr, result.artifact))
+            self.assertEqual(result.artifact["assertions"][0]["times"], 2)
+            self.assertTrue(result.artifact["assertions"][0]["ok"])
+            self.assertEqual(
+                set(result.artifact["final_state"]["samples"]),
+                {"before_sample", "at_sample"},
+            )
+            world = result.artifact["world_states"]["actors"]
+            self.assertTrue(world["sealed"])
+            self.assertEqual(world["actors"]["after"]["step"], 0)
+            self.assertEqual(world["actors"]["after"]["next_ns"], SECOND + 1)
+            tape = world["decisions"]
+            replay = run_scenario(
+                Path(directory) / "replay",
+                actors=people,
+                until_ns=SECOND,
+                tape=tape,
+            )
+            self.assertEqual(replay.returncode, 0, (replay.stderr, replay.artifact))
+            self.assertEqual(
+                replay.artifact["final_state"], result.artifact["final_state"]
+            )
+            self.assertEqual(
+                replay.artifact["world_states"]["lab"],
+                result.artifact["world_states"]["lab"],
+            )
+            for field in ("actors", "decisions", "sealed", "started"):
+                self.assertEqual(
+                    replay.artifact["world_states"]["actors"][field], world[field]
+                )
+
+    def test_horizon_before_all_arrivals_seals_without_fabricating_samples(self):
+        with tempfile.TemporaryDirectory() as directory:
+            people = [person(start_ns=2 * SECOND)]
+            for label, tape in (("rules", None), ("replay", [])):
+                with self.subTest(mode=label):
+                    result = run_scenario(
+                        Path(directory) / label,
+                        actors=people,
+                        until_ns=SECOND,
+                        tape=tape,
+                    )
+                    self.assertEqual(
+                        result.returncode, 0, (result.stderr, result.artifact)
+                    )
+                    self.assertEqual(result.artifact["assertions"][0]["times"], 0)
+                    self.assertEqual(result.artifact["final_state"], {"samples": {}})
+                    self.assertEqual(metrics(result.artifact)["unfinished_actors"], 1)
+                    self.assertEqual(
+                        result.artifact["world_states"]["actors"]["decisions"], []
+                    )
+
+    def test_zero_horizon_still_receives_actors_starting_at_zero(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result = run_scenario(
+                Path(directory) / "run",
+                actors=[person("at"), person("after", start_ns=1)],
+                until_ns=0,
+            )
+            self.assertEqual(result.returncode, 0, (result.stderr, result.artifact))
+            self.assertEqual(result.artifact["assertions"][0]["times"], 1)
+            self.assertEqual(
+                set(result.artifact["final_state"]["samples"]), {"at_sample"}
+            )
+
+    def test_missing_in_window_receipt_still_fails_the_assertion(self):
+        with tempfile.TemporaryDirectory() as directory:
+            actor = person()
+            actor["memory"]["phase"] = "wait"
+            result = run_scenario(Path(directory) / "run", actors=[actor], until_ns=0)
+            self.assertEqual(result.returncode, 1, result.artifact)
+            self.assertEqual(result.artifact["assertions"][0]["times"], 1)
+            self.assertFalse(result.artifact["assertions"][0]["ok"])
+
+    def test_invalid_horizons_are_refused_before_creating_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for index, horizon in enumerate((True, None, "1", 1.0, -1, 2**63)):
+                with self.subTest(horizon=horizon):
+                    target = Path(directory) / f"run-{index}"
+                    with self.assertRaises(ValueError):
+                        write_scenario(target, until_ns=horizon)
+                    self.assertFalse(target.exists())
+
     def test_actors_wait_for_the_busy_bench_and_report_retry(self):
         with tempfile.TemporaryDirectory() as directory:
             result = run_scenario(Path(directory) / "run")

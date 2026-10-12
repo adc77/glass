@@ -117,6 +117,8 @@ def write_scenario(
     lose_ack=True,
     seed=None,
 ):
+    if type(until_ns) is not int:
+        raise ValueError("invalid sample horizon")
     people = [person(), person("bob", start_ns=SECOND)] if actors is None else actors
     for actor in people:
         validate_profile(actor["profile"])
@@ -137,7 +139,13 @@ def write_scenario(
             },
         },
         arrivals=[{"at_ns": 0, "handler": "actors_start", "body": {}}],
-        assertions=[{"op": "event_count", "handler": "receive", "times": len(people)}],
+        assertions=[
+            {
+                "op": "event_count",
+                "handler": "receive",
+                "times": sum(actor["start_ns"] <= until_ns for actor in people),
+            }
+        ],
         product_data={"synthetic": True},
     )
     return write_capture_case(

@@ -23,7 +23,9 @@ python -m glass.experiments --out /path/to/new-experiment
 
 Six isolated simulations compare baseline and slower synthetic readings across three paired seeds. Population attributes and arrival times are paired; only the declared reading delay changes. The summary includes released samples, reports, unfinished personas, per-seed differences, and visible failure counts. A passed engine run can still contain unfinished work at the declared horizon: that metric is not hidden or treated as completed samples.
 
-`glass.experiments.demo_plan()` returns the editable closed plan for `seam.experiments.run_experiment`. Product-owned preparation accepts exactly `population_size` (1-8), `reading_delay_ns` (0-100 seconds), and `until_ns` (1-200 seconds). The SDK checks source/input identity and sealed actor worlds; `read_experiment(directory)` verifies the retained report and artifacts. This is fresh offline scenario exploration, not a live LLM forecast or a checkpoint fork.
+Receipt assertions count personas whose start time is at or before the horizon. A persona arriving exactly at the cutoff submits before the actor world is sealed; later arrivals remain unfinished without creating samples. Missing expected in-window submissions still fail the run.
+
+`glass.experiments.demo_plan()` returns the editable closed plan for `seam.experiments.run_experiment`. Product-owned preparation accepts exactly `population_size` (1-8), `reading_delay_ns` (0-100 seconds), and `until_ns` (1 nanosecond-200 seconds). All times are integer nanoseconds. The SDK checks source/input identity and sealed actor worlds; `read_experiment(directory)` verifies the retained report and artifacts. This is fresh offline scenario exploration, not a live LLM forecast or a checkpoint fork.
 
 A lab-sample test product for [seam](https://github.com/adc77/seam), the generalized simulation SDK. Glass is one consumer; other products should exercise different SDK boundaries.
 

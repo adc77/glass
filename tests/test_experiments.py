@@ -9,13 +9,49 @@ import subprocess
 import sys
 
 from seam.canon import loads
-from seam.experiments import read_experiment, run_experiment
+from seam.experiments import plan, read_experiment, run_experiment
 
 from glass.experiments import demo_plan, prepare
 from tests.support import REPO, SEAM
 
 
 class GlassExperimentTests(unittest.TestCase):
+    def test_short_horizon_reports_unstarted_actors_and_keeps_paired_metrics(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            parameters = {
+                "population_size": 1,
+                "reading_delay_ns": 0,
+                "until_ns": 1_000_000_000,
+            }
+            specification = plan(
+                "glass.experiments",
+                [
+                    {"name": "short", "parameters": parameters},
+                    {
+                        "name": "long",
+                        "parameters": {**parameters, "until_ns": 30_000_000_000},
+                    },
+                ],
+                [0],
+                baseline="short",
+            )
+            env = {"PYTHONPATH": os.pathsep.join(path for path in (SEAM, REPO) if path)}
+            summary = run_experiment(root / "experiment", specification, env=env)
+            self.assertEqual(summary["status"], "passed", summary["runs"])
+            self.assertEqual(read_experiment(root / "experiment"), summary)
+            short, long = summary["runs"]
+            self.assertEqual(short["metrics"]["unfinished_actors"], 1)
+            self.assertEqual(short["metrics"]["filed_reports"], 0)
+            self.assertEqual(long["metrics"]["unfinished_actors"], 0)
+            self.assertEqual(long["metrics"]["filed_reports"], 1)
+            comparison = summary["comparisons"]["long"]
+            self.assertEqual(comparison["status"], "complete")
+            self.assertEqual(comparison["paired_seeds"], [0])
+            self.assertEqual(comparison["excluded_seeds"], [])
+            self.assertEqual(comparison["pairs"][0]["delta"]["unfinished_actors"], -1)
+            self.assertEqual(comparison["pairs"][0]["delta"]["filed_reports"], 1)
+
     def test_module_cli_uses_the_importable_adapter_name(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
