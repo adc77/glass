@@ -4,7 +4,7 @@
 
 The optional `glass.actor_runtime` entry point runs synthetic sample submitters against the existing sample handlers and isolated SQLite lab world. Personas wait for bench readiness, provide readings, respond to retest/overdue status, and wait for report retries. Observation projections exclude other actors' samples and private IDs/timer tokens.
 
-The dependency and CI pin the published Seam 0.5 actor SDK commit below. A normal installation resolves that exact revision:
+The dependency and CI pin the published Seam 0.7 experiment SDK commit below. A normal installation resolves that exact revision:
 
 ```sh
 python -m pip install /path/to/glass
@@ -13,7 +13,17 @@ python -m unittest tests.test_actors -v
 
 `glass.actors.run_scenario(new_directory)` creates a private synthetic experiment and returns a supervised result. `metrics(result.artifact)` requires a passed run and a sealed actor world. `tape=result.artifact["world_states"]["actors"]["decisions"]` selects strict offline recorded replay; ordinary v3 checkpoints preserve actor memory and the actual pipeline's pending work.
 
-The normal pipeline, capture CLI, dependency adapters, and durable-service code are unchanged. Rerun their complete suites and installed crash/restart capture proof alongside actor tests. New Python modules change source identity: retain old journal/capture environments rather than overwriting old databases. These personas are test assumptions, not real instrument or biological models. LLM inference, UI, notification subscriptions, and checkpoint forks remain later work.
+The normal pipeline, capture CLI, dependency adapters, and durable-service code are unchanged. Rerun their complete suites and installed crash/restart capture proof alongside actor tests. New Python modules change source identity: retain old journal/capture environments rather than overwriting old databases. These personas are test assumptions, not real instrument or biological models. Seam supports optional inference; live model certification, UI, notification subscriptions, and checkpoint forks remain later work.
+
+## Repeated scenario comparisons
+
+```sh
+python -m glass.experiments --out /path/to/new-experiment
+```
+
+Six isolated simulations compare baseline and slower synthetic readings across three paired seeds. Population attributes and arrival times are paired; only the declared reading delay changes. The summary includes released samples, reports, unfinished personas, per-seed differences, and visible failure counts. A passed engine run can still contain unfinished work at the declared horizon: that metric is not hidden or treated as completed samples.
+
+`glass.experiments.demo_plan()` returns the editable closed plan for `seam.experiments.run_experiment`. Product-owned preparation accepts exactly `population_size` (1-8), `reading_delay_ns` (0-100 seconds), and `until_ns` (1-200 seconds). The SDK checks source/input identity and sealed actor worlds; `read_experiment(directory)` verifies the retained report and artifacts. This is fresh offline scenario exploration, not a live LLM forecast or a checkpoint fork.
 
 A lab-sample test product for [seam](https://github.com/adc77/seam), the generalized simulation SDK. Glass is one consumer; other products should exercise different SDK boundaries.
 
@@ -23,15 +33,15 @@ Handlers are synchronous. They take time and ids from the seam context, and the 
 
 ## Setup
 
-Seam is not vendored here. The package dependency and CI both pin the compatible Seam 0.5.0 commit `248c67fb89edb2e3a7ca97c4fd4d4360ffd4ee06`. Keep matching checkouts as siblings:
+Seam is not vendored here. The package dependency and CI both pin the compatible Seam 0.7.0 commit `4408248bafd899ecc6ac2b0cb4f55ddb1fa0480c`. Keep matching checkouts as siblings:
 
 ```shell
-git -C seam checkout 248c67fb89edb2e3a7ca97c4fd4d4360ffd4ee06
+git -C seam checkout 4408248bafd899ecc6ac2b0cb4f55ddb1fa0480c
 python -m pip install ./glass
 cd glass
 ```
 
-Installation resolves that exact Git revision rather than assuming Seam 0.4.1 is on a package index. Older SDK checkouts cannot run the capture profile. If compatible checkouts live elsewhere:
+Installation resolves that exact Git revision rather than assuming Seam is on a package index. Older SDK checkouts cannot run this experiment profile. If compatible checkouts live elsewhere:
 
 ```shell
 SEAM_SDK_PATH=/path/to/seam python3 -m unittest discover -s tests -t .
@@ -103,7 +113,7 @@ Completed captures are saved before their HTTP response is sent. If that respons
 
 Recovery requires the same Python-source identity for Glass and Seam. Changed sources, invalid frames, backwards clocks, and pre-durability databases with only a lab table are refused; there is no silent reset or automatic migration. Previously volatile sample state cannot be reconstructed from lab records. Initialize a new database explicitly when beginning a new run. SDK `SEAM_RECORD=1` is refused by this service because that external recording file is outside the SQLite transaction.
 
-Seam 0.5.0 adds opt-in actors and retains the cold-import guard fix. Journals and captures created with older SDK pins (`2dce4658803142dfe6a2f6d136b8594bca138b03`, Seam 0.4.1; `ec454cbc1040ada7fed57a78ae94148c30406857`, Seam 0.4.0) must still use their original SDK and product sources. Keep those environments for existing runs, or explicitly initialize a separate database for new runs after upgrading; do not delete or overwrite old databases to bypass the identity check.
+Seam 0.7.0 adds paired experiment orchestration and retains actors, inference, and the cold-import guard fix. Journals and captures created with older SDK pins (including `248c67fb89edb2e3a7ca97c4fd4d4360ffd4ee06`, Seam 0.5.0) must still use their original SDK and product sources. Keep those environments for existing runs, or explicitly initialize a separate database for new runs after upgrading; do not delete or overwrite old databases to bypass the identity check.
 
 The envelope, checksum, Python-source identity, bounded import, protected case packaging, and supervised replay come from Seam's capture API (`../seam/CAPTURE.md` in the matching sibling checkout). Glass owns schema validation, ID preservation, timer reconstruction, and the observable outcome projection. Timer tokens are restored into new SDK bindings rather than compared as business state; sample IDs and report idempotency keys are preserved exactly.
 

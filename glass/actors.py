@@ -115,6 +115,7 @@ def write_scenario(
     until_ns=20 * SECOND,
     busy_remaining=1,
     lose_ack=True,
+    seed=None,
 ):
     people = [person(), person("bob", start_ns=SECOND)] if actors is None else actors
     for actor in people:
@@ -130,7 +131,10 @@ def write_scenario(
                 "as_of_ns": 0,
                 "data": initial_lab(busy_remaining=busy_remaining, lose_ack=lose_ack),
             },
-            "actors": {"as_of_ns": 0, "data": population(people, seed=77, tape=tape)},
+            "actors": {
+                "as_of_ns": 0,
+                "data": population(people, seed=77 if seed is None else seed, tape=tape),
+            },
         },
         arrivals=[{"at_ns": 0, "handler": "actors_start", "body": {}}],
         assertions=[{"op": "event_count", "handler": "receive", "times": len(people)}],
@@ -152,6 +156,7 @@ def write_scenario(
         worlds={"lab": {"dataset": "lab"}, "actors": {"dataset": "actors"}},
         finalize=({"handler": "actors_finish", "body": {}},),
         same_time_order="timers_first",
+        seed=1842 if seed is None else seed,
     )
 
 
