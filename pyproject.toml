@@ -10,7 +10,7 @@ requires-python = ">=3.11"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 readme = "README.md"
-dependencies = ["seam @ git+https://github.com/adc77/seam.git@4408248bafd899ecc6ac2b0cb4f55ddb1fa0480c"]
+dependencies = ["seam @ git+https://github.com/adc77/seam.git@8575b7eb3acf2b8c11feb791d1b4192fb93d86ec"]
 
 [project.scripts]
 glass-capture = "glass.capture_cli:main"
