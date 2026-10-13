@@ -1,23 +1,16 @@
 """Goal-driven synthetic sample actors over the unchanged Glass pipeline."""
 
-from seam.personas import goal_prompt, persona
+from seam.personas import choice_prompt, persona
 
 from glass.actors import SECOND, person, validate_profile
 
 CONTRACT = (
-    "You submit your own laboratory sample and supply readings when it is running. "
-    "Capabilities: receive({sample,kind}) submits actor_id+'_sample' exactly once with "
-    "profile.kind; reading({sample,value}) supplies profile.value for that same sample. "
-    "You observe only your sample status and whether it was retested. Running means "
-    "readings may be supplied; queued means the bench is not ready. A first reading "
-    "may trigger one retest, which requires one more reading. Terminal statuses are "
-    "released, scrapped, dropped, overdue, and report_failed. You cannot control the "
-    "bench, quality verdict, or report delivery. Memory has phase (submit, wait, reading, "
-    "done) and readings (integer 0..2); these track your plan, not required transitions. "
-    "Wait profile.reading_delay_ns before each reading, polling queued state at "
-    "profile.poll_ns. There is no authorization to invent measurements or resubmit."
+    "Choose from the current valid sample intentions. Product code owns measurements, "
+    "submission ownership, at most one retest, reading-delay gates, and follow-up wakes. "
+    "Only terminal dispositions allow finish. Read supplies the actual measurement now; "
+    "wait defers it. Bench, quality verdicts, and report delivery remain product outcomes."
 )
-PROMPT = goal_prompt(CONTRACT)
+PROMPT = choice_prompt(CONTRACT)
 
 
 def sample_persona(actor_id, *, start_ns, value, reading_delay_ns, name):
@@ -26,6 +19,8 @@ def sample_persona(actor_id, *, start_ns, value, reading_delay_ns, name):
         actor_id, start_ns=start_ns, value=value, reading_delay_ns=reading_delay_ns
     )
     actor["profile"]["poll_ns"] = 5 * SECOND
+    actor["policy"] = "sample_v2"
+    actor["memory"]["ready_at_ns"] = None
     actor["profile"]["persona"] = persona(
         name,
         ["Obtain a final quality disposition for my sample; prefer release."],

@@ -48,7 +48,7 @@ def measure(artifact):
     finished = [
         row["request"]["at_ns"]
         for row in decisions
-        if row["decision"]["wake_after_ns"] is None
+        if row["resolution"]["wake_after_ns"] is None
     ]
     return {
         **product,

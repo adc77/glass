@@ -35,7 +35,7 @@ Handlers are synchronous. They take time and ids from the seam context, and the 
 
 ## Setup
 
-Seam is not vendored here. The package dependency and CI both pin the compatible Seam 0.9.0 commit `823d58cf432b7b5768530d7860f21bff085bbd50`. Keep matching checkouts as siblings:
+Seam is not vendored here. The package dependency and CI both pin the compatible Seam 0.10.0 commit `89388917628431e571f02afbd1fd9d121be8b1f1`. Keep matching checkouts as siblings:
 
 ```shell
 git -C seam checkout 823d58cf432b7b5768530d7860f21bff085bbd50
@@ -115,7 +115,7 @@ Completed captures are saved before their HTTP response is sent. If that respons
 
 Recovery requires the same Python-source identity for Glass and Seam. Changed sources, invalid frames, backwards clocks, and pre-durability databases with only a lab table are refused; there is no silent reset or automatic migration. Previously volatile sample state cannot be reconstructed from lab records. Initialize a new database explicitly when beginning a new run. SDK `SEAM_RECORD=1` is refused by this service because that external recording file is outside the SQLite transaction.
 
-Seam 0.9.0 adds synthetic goal contracts and retains paired experiments, actors, inference, and the cold-import guard fix. Journals and captures created with older SDK pins (including `248c67fb89edb2e3a7ca97c4fd4d4360ffd4ee06`, Seam 0.5.0) must still use their original SDK and product sources. Keep those environments for existing runs, or explicitly initialize a separate database for new runs after upgrading; do not delete or overwrite old databases to bypass the identity check.
+Seam 0.10.0 adds product-owned valid choices and code-enforced timing gates while retaining paired experiments, actors, inference, and the cold-import guard fix. Journals and captures created with older SDK pins (including `248c67fb89edb2e3a7ca97c4fd4d4360ffd4ee06`, Seam 0.5.0) must still use their original SDK and product sources. Keep those environments for existing runs, or explicitly initialize a separate database for new runs after upgrading; do not delete or overwrite old databases to bypass the identity check.
 
 The envelope, checksum, Python-source identity, bounded import, protected case packaging, and supervised replay come from Seam's capture API (`../seam/CAPTURE.md` in the matching sibling checkout). Glass owns schema validation, ID preservation, timer reconstruction, and the observable outcome projection. Timer tokens are restored into new SDK bindings rather than compared as business state; sample IDs and report idempotency keys are preserved exactly.
 

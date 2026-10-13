@@ -9,7 +9,8 @@ from seam.canon import dumps, loads
 from seam.dataset import dataset_ref
 from seam.inference import InferenceRun, settings
 
-from glass.actors import sample_policy, validate_profile
+from glass.actors import validate_profile
+from glass.choices import sample_choice_policy
 from glass.goal_experiments import measure, prepare, variants
 from glass.personas import PROMPT, mixed_population
 from tests.support import REPO, SEAM
@@ -20,7 +21,7 @@ def fake_provider(envelope):
         "request_id": envelope["request_id"],
         "model": envelope["model"],
         "returned_model": envelope["model"],
-        "decision": sample_policy(envelope["request"], None),
+        "decision": sample_choice_policy(envelope["request"], None),
         "usage": {"input_tokens": 1, "output_tokens": 1, "cost_microusd": 0},
     }
 

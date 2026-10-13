@@ -91,7 +91,14 @@ def translate(actor, action, decision_id):
 
 
 def system():
-    return ActorSystem({"sample_v1": sample_policy}, observe, translate)
+    from glass.choices import sample_choice_policy, sample_choices
+
+    return ActorSystem(
+        {"sample_v1": sample_policy, "sample_v2": sample_choice_policy},
+        observe,
+        translate,
+        choices={"sample_v2": sample_choices},
+    )
 
 
 def person(actor_id="alice", *, start_ns=0, value=42, reading_delay_ns=SECOND):
