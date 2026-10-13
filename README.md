@@ -156,3 +156,6 @@ there is no implicit paid endpoint or rule fallback. Both rule-mode regression c
 model-mode runs use the same population and handlers. Goals are synthetic assumptions, not
 calibrated human predictions. Glass's lab models busy replies, not a concurrent machine-capacity
 queue; the independent Reservations test product supplies the actual limited-capacity test.
+
+See [the validation report](PERSONA_VALIDATION.md): software checks pass, but the first
+real goal-policy LLM trials failed behavior constraints. This is not a live-persona certification.
