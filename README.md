@@ -4,7 +4,7 @@
 
 The optional `glass.actor_runtime` entry point runs synthetic sample submitters against the existing sample handlers and isolated SQLite lab world. Personas wait for bench readiness, provide readings, respond to retest/overdue status, and wait for report retries. Observation projections exclude other actors' samples and private IDs/timer tokens.
 
-The dependency and CI pin the published Seam 0.7 experiment SDK commit below. A normal installation resolves that exact revision:
+The dependency and CI pin the published Seam 0.9 SDK commit below. A normal installation resolves that exact revision:
 
 ```sh
 python -m pip install /path/to/glass
@@ -35,10 +35,10 @@ Handlers are synchronous. They take time and ids from the seam context, and the 
 
 ## Setup
 
-Seam is not vendored here. The package dependency and CI both pin the compatible Seam 0.7.0 commit `4408248bafd899ecc6ac2b0cb4f55ddb1fa0480c`. Keep matching checkouts as siblings:
+Seam is not vendored here. The package dependency and CI both pin the compatible Seam 0.9.0 commit `823d58cf432b7b5768530d7860f21bff085bbd50`. Keep matching checkouts as siblings:
 
 ```shell
-git -C seam checkout 4408248bafd899ecc6ac2b0cb4f55ddb1fa0480c
+git -C seam checkout 823d58cf432b7b5768530d7860f21bff085bbd50
 python -m pip install ./glass
 cd glass
 ```
@@ -115,7 +115,7 @@ Completed captures are saved before their HTTP response is sent. If that respons
 
 Recovery requires the same Python-source identity for Glass and Seam. Changed sources, invalid frames, backwards clocks, and pre-durability databases with only a lab table are refused; there is no silent reset or automatic migration. Previously volatile sample state cannot be reconstructed from lab records. Initialize a new database explicitly when beginning a new run. SDK `SEAM_RECORD=1` is refused by this service because that external recording file is outside the SQLite transaction.
 
-Seam 0.7.0 adds paired experiment orchestration and retains actors, inference, and the cold-import guard fix. Journals and captures created with older SDK pins (including `248c67fb89edb2e3a7ca97c4fd4d4360ffd4ee06`, Seam 0.5.0) must still use their original SDK and product sources. Keep those environments for existing runs, or explicitly initialize a separate database for new runs after upgrading; do not delete or overwrite old databases to bypass the identity check.
+Seam 0.9.0 adds synthetic goal contracts and retains paired experiments, actors, inference, and the cold-import guard fix. Journals and captures created with older SDK pins (including `248c67fb89edb2e3a7ca97c4fd4d4360ffd4ee06`, Seam 0.5.0) must still use their original SDK and product sources. Keep those environments for existing runs, or explicitly initialize a separate database for new runs after upgrading; do not delete or overwrite old databases to bypass the identity check.
 
 The envelope, checksum, Python-source identity, bounded import, protected case packaging, and supervised replay come from Seam's capture API (`../seam/CAPTURE.md` in the matching sibling checkout). Glass owns schema validation, ID preservation, timer reconstruction, and the observable outcome projection. Timer tokens are restored into new SDK bindings rather than compared as business state; sample IDs and report idempotency keys are preserved exactly.
 
@@ -142,3 +142,17 @@ The original `python -m glass` live mode remains a one-receipt scaffold with rec
 All inputs and dependencies are owned, synthetic examples, not production instrumentation. Recovery covers process crashes with intact SQLite storage, not arbitrary storage loss. Its atomicity applies only to the product-owned SQLite lab and frame, not external instruments, HTTP services, or multiple databases. Capture begins now, not at an arbitrary historical date. The serialized development service does not prove distributed concurrency, historical capture, or real instrument behavior. Captures allow at most 1,000 external deliveries and 8 MiB; the complete live frame is bounded to 16 MiB, and the SDK's case, state, and artifact budgets can be tighter. Checksums are not signatures; exporters remain responsible for sanitization. Source identity hashes Python files, not native dependencies, runtime configuration, or hardware.
 
 Apache-2.0.
+
+## Goal-driven sample personas
+
+`glass.personas` defines responsive and deliberate synthetic submitters with declared goals.
+`glass.goal_experiments` pairs that mixed population across healthy and faulted lab conditions
+(busy bench, failed quality checks, lost report acknowledgement). Actual Glass handlers execute
+the actions. `goal_achieved` counts releases, not simply actors finishing or reports being filed.
+
+Use `glass.personas.PROMPT` with ordinary `seam.inference.settings`, and
+`glass.goal_experiments` as the inference-experiment adapter. Choose an explicit provider callable;
+there is no implicit paid endpoint or rule fallback. Both rule-mode regression controls and
+model-mode runs use the same population and handlers. Goals are synthetic assumptions, not
+calibrated human predictions. Glass's lab models busy replies, not a concurrent machine-capacity
+queue; the independent Reservations test product supplies the actual limited-capacity test.

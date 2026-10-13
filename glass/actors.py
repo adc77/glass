@@ -6,6 +6,7 @@ from pathlib import Path
 from seam import Fault, capture_bundle, run_product, write_capture_case
 from seam.actors import ActorSystem, population
 from seam.ctx import assert_int
+from seam.personas import validate_persona
 
 from glass.lab import initial_lab
 from glass.pipeline import DISPOSITIONS
@@ -14,13 +15,16 @@ SECOND = 1_000_000_000
 
 
 def validate_profile(profile):
-    if type(profile) is not dict or set(profile) != {
+    fields = {
         "kind",
         "value",
         "reading_delay_ns",
         "poll_ns",
-    }:
+    }
+    if type(profile) is not dict or set(profile) not in (fields, fields | {"persona"}):
         raise ValueError("invalid sample persona")
+    if "persona" in profile:
+        validate_persona(profile["persona"])
     if type(profile["kind"]) is not str or not profile["kind"]:
         raise ValueError("invalid sample kind")
     assert_int(profile["value"], minimum=0)
@@ -115,6 +119,7 @@ def write_scenario(
     until_ns=20 * SECOND,
     busy_remaining=1,
     lose_ack=True,
+    qc_max=100,
     seed=None,
 ):
     if type(until_ns) is not int:
@@ -131,11 +136,15 @@ def write_scenario(
         datasets={
             "lab": {
                 "as_of_ns": 0,
-                "data": initial_lab(busy_remaining=busy_remaining, lose_ack=lose_ack),
+                "data": initial_lab(
+                    busy_remaining=busy_remaining, lose_ack=lose_ack, qc_max=qc_max
+                ),
             },
             "actors": {
                 "as_of_ns": 0,
-                "data": population(people, seed=77 if seed is None else seed, tape=tape),
+                "data": population(
+                    people, seed=77 if seed is None else seed, tape=tape
+                ),
             },
         },
         arrivals=[{"at_ns": 0, "handler": "actors_start", "body": {}}],

@@ -32,7 +32,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: adc77/seam
-          ref: 8575b7eb3acf2b8c11feb791d1b4192fb93d86ec
+          ref: 823d58cf432b7b5768530d7860f21bff085bbd50
           path: seam
 
       - name: Install Glass and its pinned SDK
