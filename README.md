@@ -1,10 +1,14 @@
 # glass
 
+Start with the [end-to-end demo and quickstart](QUICKSTART.md): one free command runs
+paired healthy/faulted persona experiments, fresh-process continuation, and verified
+offline replay. The scripted controller is explicitly not an LLM.
+
 ## Reactive actors
 
 The optional `glass.actor_runtime` entry point runs synthetic sample submitters against the existing sample handlers and isolated SQLite lab world. Personas wait for bench readiness, provide readings, respond to retest/overdue status, and wait for report retries. Observation projections exclude other actors' samples and private IDs/timer tokens.
 
-The dependency and CI pin the published Seam 0.9 SDK commit below. A normal installation resolves that exact revision:
+The dependency and CI pin the published Seam 0.10.0 SDK commit below. A normal installation resolves that exact revision:
 
 ```sh
 python -m pip install /path/to/glass
@@ -13,7 +17,7 @@ python -m unittest tests.test_actors -v
 
 `glass.actors.run_scenario(new_directory)` creates a private synthetic experiment and returns a supervised result. `metrics(result.artifact)` requires a passed run and a sealed actor world. `tape=result.artifact["world_states"]["actors"]["decisions"]` selects strict offline recorded replay; ordinary v3 checkpoints preserve actor memory and the actual pipeline's pending work.
 
-The normal pipeline, capture CLI, dependency adapters, and durable-service code are unchanged. Rerun their complete suites and installed crash/restart capture proof alongside actor tests. New Python modules change source identity: retain old journal/capture environments rather than overwriting old databases. These personas are test assumptions, not real instrument or biological models. Seam supports optional inference; live model certification, UI, notification subscriptions, and checkpoint forks remain later work.
+The normal pipeline, capture CLI, dependency adapters, and durable-service code are unchanged. Rerun their complete suites and installed crash/restart capture proof alongside actor tests. New Python modules change source identity: retain old journal/capture environments rather than overwriting old databases. These personas are test assumptions, not real instrument or biological models. Seam includes optional inference experiments and a read-only viewer; calibrated behavior, notification subscriptions, and checkpoint forks remain later work.
 
 ## Repeated scenario comparisons
 
@@ -38,7 +42,7 @@ Handlers are synchronous. They take time and ids from the seam context, and the 
 Seam is not vendored here. The package dependency and CI both pin the compatible Seam 0.10.0 commit `89388917628431e571f02afbd1fd9d121be8b1f1`. Keep matching checkouts as siblings:
 
 ```shell
-git -C seam checkout 823d58cf432b7b5768530d7860f21bff085bbd50
+git -C seam checkout 89388917628431e571f02afbd1fd9d121be8b1f1
 python -m pip install ./glass
 cd glass
 ```
@@ -157,5 +161,5 @@ model-mode runs use the same population and handlers. Goals are synthetic assump
 calibrated human predictions. Glass's lab models busy replies, not a concurrent machine-capacity
 queue; the independent Reservations test product supplies the actual limited-capacity test.
 
-See [the validation report](PERSONA_VALIDATION.md): software checks pass, but the first
-real goal-policy LLM trials failed behavior constraints. This is not a live-persona certification.
+See [the validation report](PERSONA_VALIDATION.md): runtime and timing checks pass,
+but one real-model persona goal failed. This is not a live-persona certification.

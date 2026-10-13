@@ -141,6 +141,8 @@ jobs:
           env -u PYTHONPATH python "$GITHUB_WORKSPACE/glass/scripts/capture_proof.py" \
             --out "$RUNNER_TEMP/durable-capture-proof" --installed
           env -u PYTHONPATH python -m glass.experiments --out "$RUNNER_TEMP/glass-experiments"
+          env -u PYTHONPATH glass-demo --scripted --out "$RUNNER_TEMP/glass-demo"
+          env -u PYTHONPATH python -m seam_viewer --experiment "Glass=$RUNNER_TEMP/glass-demo/experiment" --check
           env -u PYTHONPATH python - <<'PY'
           from seam.experiments import read_experiment
           summary = read_experiment("glass-experiments")
