@@ -43,7 +43,7 @@ class PersonaTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_profile({**population[0]["profile"], "unknown": True})
 
-    def test_adverse_outcomes_are_not_mislabeled_as_goals(self):
+    def test_completed_disposition_is_distinct_from_preferred_release(self):
         for variant in variants():
             with (
                 self.subTest(variant=variant["name"]),
@@ -61,8 +61,11 @@ class PersonaTests(unittest.TestCase):
                 metrics = measure(result.artifact)
                 self.assertEqual(metrics["filed_reports"], 2)
                 self.assertEqual(metrics["unfinished_actors"], 0)
+                self.assertEqual(metrics["disposition_completed"], 2)
+                self.assertNotIn("goal_achieved", metrics)
                 self.assertEqual(
-                    metrics["goal_achieved"], 2 if variant["name"] == "healthy" else 0
+                    metrics["preferred_outcome_achieved"],
+                    2 if variant["name"] == "healthy" else 0,
                 )
                 if variant["name"] == "faults":
                     self.assertEqual(metrics["scrapped"], 2)
@@ -89,9 +92,39 @@ class PersonaTests(unittest.TestCase):
                 session.invoke(fake_provider)
             with InferenceRun(root / "run") as session:
                 result = session.run(fake_provider)
-                self.assertEqual(measure(result.artifact)["goal_achieved"], 2)
+                self.assertEqual(
+                    measure(result.artifact)["preferred_outcome_achieved"], 2
+                )
                 one, two = session.replay(), session.replay()
                 self.assertEqual(one.artifact, two.artifact)
+
+    def test_dropped_and_horizon_truncated_samples_do_not_complete_dispositions(self):
+        for changes in ({"busy_remaining": 8}, {"until_ns": 1}):
+            with (
+                self.subTest(changes=changes),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                root = Path(directory)
+                path = prepare(
+                    root / "case", {**variants()[0]["parameters"], **changes}, 191
+                )
+                result = run_product(
+                    "glass.actor_runtime",
+                    str(path),
+                    "sim-sample-actors",
+                    str(root / "artifact.json"),
+                    env={"PYTHONPATH": ":".join(p for p in (SEAM, REPO) if p)},
+                )
+                self.assertEqual(result.returncode, 0, (result.stderr, result.artifact))
+                measured = measure(result.artifact)
+                self.assertEqual(measured["disposition_completed"], 0)
+                self.assertEqual(measured["preferred_outcome_achieved"], 0)
+                if "busy_remaining" in changes:
+                    self.assertEqual(measured["dropped"], 2)
+                    self.assertEqual(measured["filed_reports"], 2)
+                else:
+                    self.assertEqual(measured["unfinished_actors"], 2)
+                    self.assertEqual(measured["filed_reports"], 0)
 
     def test_invalid_parameters_refused_before_output(self):
         with tempfile.TemporaryDirectory() as directory:

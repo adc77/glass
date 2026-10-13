@@ -14,7 +14,8 @@ METRICS = {
     "filed_reports": "reports",
     "unfinished_actors": "actors",
     "dropped": "samples",
-    "goal_achieved": "actors",
+    "disposition_completed": "samples",
+    "preferred_outcome_achieved": "samples",
     "decisions": "count",
     "completion_time_ns": "ns",
 }
@@ -56,7 +57,8 @@ def measure(artifact):
             row["status"] == "dropped"
             for row in artifact["final_state"]["samples"].values()
         ),
-        "goal_achieved": product["released"],
+        "disposition_completed": product["released"] + product["scrapped"],
+        "preferred_outcome_achieved": product["released"],
         "decisions": len(decisions),
         "completion_time_ns": max(finished) if finished else 0,
     }

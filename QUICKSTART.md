@@ -1,20 +1,25 @@
 # One end-to-end demo
 
-Python 3.11 or newer and Git are required. Installation needs internet; the demo does not.
+Python 3.11 or newer and Git are required on macOS or Linux. Installation needs internet; the demo does not.
 Use a fresh virtual environment, not an environment holding old simulation journals.
 
 ```sh
+mkdir glass-work
+cd glass-work
 git clone https://github.com/adc77/glass.git
-python3 -m venv glass-demo-env
-. glass-demo-env/bin/activate
+python3 -m venv .venv
+. .venv/bin/activate
 python -m pip install ./glass
-cd glass-demo-env
-glass-demo --scripted --out demo
+mkdir runs
+glass-demo --scripted --out runs/demo
 ```
 
 No API key, GPU, model download, Modal account, or sibling Seam checkout is needed.
 Glass installs its exact pinned Seam dependency. The output directory must not exist;
-for another run, choose `--out demo-2`. Failed runs retain their evidence, not a clean reset.
+for another run, choose `--out runs/demo-2`. Keep running these commands from `glass-work`,
+not from inside `.venv` or the cloned `glass` folder. Results live separately in `runs`.
+The parent directory must exist; path errors explain what to fix without overwriting evidence.
+Failed runs retain their evidence, not a clean reset.
 
 The controller deliberately picks the first product-authorized action. **It is not an LLM.**
 It uses the same durable external-decision handoff as model runs, with zero-cost synthetic
@@ -32,21 +37,28 @@ handlers, twice each with paired seeds 7 and 19:
 
 The command submits one decision, closes the journal, and continues in a fresh Python
 process. It checks outcomes, verifies viewer evidence, and replays all four runs twice
-without calling the controller. Each replay pair must be byte-identical. Failure exits
-nonzero; successful execution prints JSON with `status: passed`. The faulted scenario
-passes the software checks while **zero personas achieve their release goal**.
+without calling the controller. Each replay pair must be byte-identical. Progress and a
+readable outcome summary appear on stderr; stdout remains JSON with `status: passed`.
+Failure exits nonzero. Both scenarios complete two final dispositions per run
+(`disposition_completed`); only the healthy scenario achieves two preferred releases
+(`preferred_outcome_achieved`). Scrapping completes a disposition, not the preferred release.
+Engine checks passing and actor decisions finishing are separate from these business outcomes.
 Fresh-process continuation is not a forced-crash proof; the durable-service proof below is.
 
 ## Inspect it
 
 ```sh
-python -m seam_viewer --experiment "Glass=demo/experiment" --check
-python -m seam_viewer --experiment "Glass=demo/experiment" --port 0
+python -m seam_viewer --experiment "Glass=runs/demo/experiment" --check
+python -m seam_viewer --experiment "Glass=runs/demo/experiment" --port 0
 ```
 
+These commands assume the same `glass-work` working directory and activated environment.
+The demo also prints a fully quoted viewer command with the absolute interpreter and
+experiment paths: copy that command to run the viewer from any folder, without activation.
 Open the printed loopback URL. Compare scenarios and inspect observations, authorized
 choices, selected decisions, resolved actions, timing, and outcomes. The viewer is read-only
-and makes no model calls. Stop it with Ctrl-C. Keep the private `demo` directory intact:
+and makes no model calls. Seconds and averages are readable; exact original values remain
+available for inspection. Stop it with Ctrl-C. Keep the private `runs/demo` directory intact:
 it contains the verified summary, inputs, journals, artifacts, and replay evidence.
 
 ## Real models and the v1 boundary
@@ -65,3 +77,13 @@ or source-compatible replay across upgrades. Preserve old environments and journ
 For the separate actual HTTP/SQLite forced-crash capture proof, see
 [live capture and replay](README.md#live-capture-and-replay). The packaged persona demo
 uses isolated simulation worlds; it does not contact instruments or production services.
+
+## Usability-pass verification
+
+Seam's 261 tests and Glass's 94 tests pass on Python 3.11, 3.13, and 3.14. Normal
+installed packages also pass the four-run demo, eight offline replays, viewer asset/HTTP
+proof, and actual Glass HTTP/SQLite proof with three forced restarts on each interpreter.
+Chrome checks cover scenario selection, actor/decision inspection, tabs, timeline search,
+390-pixel layout, another product's metrics, missing paths, and failed cells without
+invented zero outcomes. Exact-value formatting has separate BigInt regression tests.
+Seam's SDK core and Glass's normal handlers/durable service are unchanged.

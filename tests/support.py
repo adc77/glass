@@ -9,23 +9,12 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _find_seam():
-    """Locate the seam checkout.
-
-    Order: SEAM_SDK_PATH, then a sibling clone, then an installed seam.
-    Returns the path to put on PYTHONPATH, or None if seam is already
-    importable from the environment.
-    """
+    """Override the installed SDK only when SEAM_SDK_PATH is explicitly supplied."""
     override = os.environ.get("SEAM_SDK_PATH")
     if override:
         if not os.path.isdir(os.path.join(override, "seam")):
             raise AssertionError(f"SEAM_SDK_PATH={override!r} has no seam/ package")
         return override
-    sibling = os.path.join(os.path.dirname(REPO), "seam")
-    if os.path.isdir(os.path.join(sibling, "seam")):
-        return sibling
-    legacy = os.path.join(os.path.dirname(REPO), "sim-sdk")
-    if os.path.isdir(os.path.join(legacy, "seam")):
-        return legacy
     return None
 
 
@@ -90,7 +79,9 @@ def run_proc(args, env, timeout=10):
             stdout = stdout.decode("utf-8", "replace")
         if isinstance(stderr, bytes):
             stderr = stderr.decode("utf-8", "replace")
-        raise AssertionError(f"timed out after {timeout}s\nstdout={stdout}\nstderr={stderr}") from None
+        raise AssertionError(
+            f"timed out after {timeout}s\nstdout={stdout}\nstderr={stderr}"
+        ) from None
 
 
 def run_glass(case, namespace, artifact, extra=None, timeout=10):

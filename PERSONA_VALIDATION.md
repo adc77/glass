@@ -1,5 +1,13 @@
 # Persona validation: 2026-10-13
 
+## Current outcome labels
+
+Glass 0.6.2 separates `disposition_completed` (released or scrapped with a filed report)
+from `preferred_outcome_achieved` (released). It removes the ambiguous `goal_achieved`
+label. Pending/failed reports, overdue samples, and dropped samples count as neither.
+Historical trials below retain their original evidence and environments; the scenario
+expectation check is not a claim that every persona obtained its preferred outcome.
+
 ## Product-owned choices and timing gates
 
 Verdict: runtime fix verified; real-model goal behavior remains partial (3/4 scenarios).
@@ -26,7 +34,7 @@ timing/capability audits, and two byte-identical provider-free replays. Of those
 21 had multiple valid options and eight selected deferral instead of the rule control's
 eligible action. This is not a decoder that secretly chooses the expected transition.
 
-| Scenario | Decisions | Observed result | Goal gate |
+| Scenario | Decisions | Observed result | Scenario expectation check |
 | --- | ---: | --- | --- |
 | Bookings: ample capacity | 11 | Both goals achieved; one payment failure and one refund | Passed |
 | Bookings: scarce capacity | 18 | Buyer confirmed; canceller deferred payment until its hold expired | Failed |
