@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Glass / Sample workbench</title>
+    <link rel="stylesheet" href="style.css" />
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <header>
+      <a class="brand" href="./">glass<span>Sample workbench</span></a
+      ><span class="mode">Local synthetic lab / real time</span>
+    </header>
+    <main>
+      <section class="intro">
+        <p class="eyebrow">Observe / operate / capture</p>
+        <h1>From sample to outcome.</h1>
+        <p>
+          Run the actual lab workflow. Capture its inputs and replay product
+          behavior in Seam—without touching this live database.
+        </p>
+      </section>
+      <p id="error" class="error" role="alert" hidden></p>
+      <p id="message" role="status" aria-live="polite">
+        Connecting to your local lab…
+      </p>
+      <div class="workspace">
+        <section class="panel">
+          <p class="eyebrow">01 / Intake</p>
+          <h2>Receive a sample</h2>
+          <form id="receive-form">
+            <label for="sample">Sample name</label
+            ><input
+              id="sample"
+              name="sample"
+              required
+              maxlength="64"
+              pattern="[A-Za-z0-9_\-]+"
+              autocomplete="off"
+              placeholder="sample_01"
+            />
+            <label for="kind">Sample kind</label
+            ><input
+              id="kind"
+              name="kind"
+              required
+              maxlength="64"
+              pattern="[A-Za-z0-9_\-]+"
+              value="blood"
+            />
+            <button type="submit">Receive sample</button>
+          </form>
+          <p class="hint">
+            Names identify synthetic samples. Repeating an identical receipt
+            does not create another sample.
+          </p>
+        </section>
+        <section class="panel">
+          <p class="eyebrow">02 / Measurement</p>
+          <h2>Record a reading</h2>
+          <form id="reading-form">
+            <label for="reading-sample">Running sample</label
+            ><select id="reading-sample" name="sample" required>
+              <option value="">No running samples</option>
+            </select>
+            <label for="reading">Reading value</label
+            ><input
+              id="reading"
+              name="reading"
+              type="number"
+              step="1"
+              min="-1000000"
+              max="1000000"
+              required
+              value="10"
+            />
+            <button id="reading-button" type="submit" disabled>
+              Record reading
+            </button>
+          </form>
+          <p class="hint">
+            A failed quality check schedules one retest. Product timers own
+            retries; this page does not fast-forward time.
+          </p>
+        </section>
+        <section class="panel capture">
+          <p class="eyebrow">03 / Evidence</p>
+          <h2>Capture this workflow</h2>
+          <p id="capture-status">Capture: unknown</p>
+          <div class="capture-actions">
+            <button id="capture-start" type="button">Start capture</button
+            ><button id="capture-finish" type="button" disabled>
+              Finish capture</button
+            ><button
+              id="capture-abort"
+              class="secondary"
+              type="button"
+              disabled
+            >
+              Abort active capture
+            </button>
+          </div>
+          <a
+            id="download"
+            class="download"
+            href="api/capture/latest"
+            download
+            hidden
+            >Download capture</a
+          >
+          <p class="hint">
+            Downloads include internal IDs and dependency state. Keep evidence
+            private. A capture ending with pending work is not goal completion.
+          </p>
+        </section>
+      </div>
+      <section class="panel outcomes">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Actual product outcomes</p>
+            <h2>Your samples</h2>
+          </div>
+          <button id="refresh" class="secondary" type="button">
+            Refresh state
+          </button>
+        </div>
+        <p id="report-count">Stored reports: —</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Sample</th>
+                <th scope="col">Kind</th>
+                <th scope="col">Status</th>
+                <th scope="col">Retested</th>
+                <th scope="col">Report attempts</th>
+              </tr>
+            </thead>
+            <tbody id="samples"></tbody>
+          </table>
+        </div>
+        <p id="empty">No samples received yet.</p>
+        <p class="hint">
+          Released achieves the preferred release outcome. Scrapped completes a
+          disposition, not that preferred outcome. Pending, dropped, and overdue
+          work are shown—not called success.
+        </p>
+      </section>
+      <footer>
+        This is a local synthetic operator workbench, not a production service
+        or a calibrated human simulation. Seam’s evidence viewer remains
+        separate and read-only.
+      </footer>
+    </main>
+  </body>
+</html>

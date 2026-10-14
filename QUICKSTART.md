@@ -63,6 +63,11 @@ it contains the verified summary, inputs, journals, artifacts, and replay eviden
 
 ## Real models and the v1 boundary
 
+For an actual operator UI over the durable product, use the separate
+[workbench/browser bridge](WORKBENCH.md). It runs real-time browser workflows and
+imports their captures for strict product replay; it is not the evidence viewer or
+an autonomous real-model persona certificate.
+
 The free demo does not silently upgrade to a paid endpoint. For explicit model runs,
 use `glass.goal_experiments`, `glass.personas.PROMPT`, and Seam's
 [provider-neutral experiment controller](https://github.com/adc77/seam/blob/main/INFERENCE_EXPERIMENTS.md).

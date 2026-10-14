@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "glass"
-version = "0.6.2"
+version = "0.7.0"
 description = "A lab-sample pipeline that adopts the seam SDK."
 requires-python = ">=3.11"
 license = "Apache-2.0"
@@ -15,9 +15,10 @@ dependencies = ["seam @ git+https://github.com/adc77/seam.git@ccee8cf07f19c673d6
 [project.scripts]
 glass-capture = "glass.capture_cli:main"
 glass-demo = "glass.demo:main"
+glass-workbench = "glass.workbench:main"
 
 [tool.setuptools.packages.find]
 include = ["glass*"]
 
 [tool.setuptools.package-data]
-glass = ["cases/*.json"]
+glass = ["cases/*.json", "workbench_static/*.html", "workbench_static/*.css", "workbench_static/*.js"]

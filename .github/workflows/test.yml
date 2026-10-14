@@ -10,6 +10,32 @@ permissions:
   contents: read
 
 jobs:
+  browser:
+    name: installed workbench browser/capture bridge
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26"
+          cache: npm
+          cache-dependency-path: browser/package-lock.json
+      - name: Install normal Python and locked browser packages
+        run: |
+          python -m pip install .
+          cd browser
+          npm ci
+          npx e2e-web install --with-deps chromium
+          npx tsc --noEmit
+          node --check proof.mjs
+      - name: Drive actual UI, download capture, and replay without live writes
+        working-directory: browser
+        run: |
+          node proof.mjs --python "$(python -c 'import sys; print(sys.executable)')" --out "$RUNNER_TEMP/workbench-proof"
+
   suite:
     name: suite on ${{ matrix.os }} / py${{ matrix.python }}
     runs-on: ${{ matrix.os }}

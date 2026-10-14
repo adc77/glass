@@ -1,5 +1,10 @@
 # glass
 
+The [local sample workbench and browser/capture proof](WORKBENCH.md) operate the actual
+durable product through a UI, then replay downloaded captures offline. The browser driver
+is explicitly scripted, not an LLM; real-time browser testing and virtual-time product
+replay remain separate. No SDK or ordinary handler changes are required.
+
 Start with the [end-to-end demo and quickstart](QUICKSTART.md): one free command runs
 paired healthy/faulted persona experiments, fresh-process continuation, and verified
 offline replay. The scripted controller is explicitly not an LLM.
