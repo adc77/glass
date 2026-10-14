@@ -1,6 +1,6 @@
 # Glass workbench and browser-to-capture proof
 
-Glass 0.7.0 adds a local operator UI over the existing durable service. Receiving samples,
+Glass 0.8.0 provides a local operations console over the existing durable service. Receiving samples,
 recording readings, quality checks, retries, and report writes use the ordinary product
 handlers and SQLite lab adapter. The workbench is not Seam's read-only evidence viewer,
 and the browser does not execute inside Seam's guarded simulation process.
@@ -26,7 +26,7 @@ Stop with Ctrl-C. A restart prints a new URL; use that URL, not the old one.
 `init` never replaces an existing database. Only the local operator is modeled; there
 are no production accounts, customer authorization, or calibrated user personas here.
 
-Start a capture, receive a named synthetic sample of kind `blood`, record an integer
+Start a capture, use **New sample** to receive a named synthetic sample of kind `blood`, record an integer
 reading of `10` while it is running, then finish the capture and download it. The healthy
 sample is released with one report. The operator screen omits private IDs and timer tokens;
 the downloaded capture includes them for reproducibility and must be kept private.
@@ -44,6 +44,19 @@ inspect current state before issuing another action. Failed domain delivery inva
 an active capture; explicitly abort it before starting another. Old completed captures
 are not shown as the new active capture's download. A capture can end with pending work;
 successful replay then proves that pending outcome, not a completed goal.
+
+The sample queue supports name/kind search and status filters. Counts come from the
+observed product state, not fabricated activity. Select a sample for its status,
+retest/report attempts, and preferred-outcome verdict. The measurement selector retains
+your choice across observations. Intake uses a keyboard-accessible dialog with explicit
+cancel and focus restoration. Network/schema failures label state stale and disable
+writes until a successful observation; recovering the connection does not clear an
+uncertain-write warning. Requests are bounded to ten seconds without automatic retries.
+
+**Capture evidence** displays the retained payload/source hashes, input count, exact
+capture-window nanoseconds, and actual outcomes/reports. Its metadata projection omits
+private sample IDs and does not claim that a replay has run. Active/invalidated captures
+do not appear as the latest completed capture. Use the verifier below for that verdict.
 
 ## Replay the downloaded product capture
 
@@ -93,11 +106,23 @@ video, per-step traces, and the e2e report. The downloaded artifact's hash is ve
 that report before importing it. Two product replays must match the captured actual state,
 and the stopped live database's bytes must remain unchanged during replay.
 
+The proof also creates a fresh four-run scripted experiment and drives the installed
+Seam evidence console: run search/filtering, persona decisions, timeline search, final
+state, keyboard tabs, and desktop/narrow-screen layouts. It requires all experiment file
+hashes to remain unchanged. Browser evidence is retained separately from the workbench
+captures. The browser tests additionally cover queue filters, intake cancellation/focus,
+capture metadata, stale-state write blocking, and successful reconnection.
+
 The output has `healthy/`, `adverse/`, and `verification.json`; each scenario retains its
 live database, downloaded capture, browser evidence, and two replay artifacts. Unique
 original browser records also remain under `browser/.e2e/`. Keep these private; downloads
 contain internal IDs and video is not a generic secret-redaction guarantee. No raw evidence
 is committed. Reruns require new outputs and never clear old browser evidence.
+
+The compact console is an interface-quality upgrade, not public-production certification.
+The backend remains a serialized, local synthetic example. Multi-user authentication,
+authorization, TLS, operational monitoring, deployment controls, and an explicit data
+retention policy must be designed before public exposure. No hosting is enabled here.
 
 The proof refuses missing dependencies/settings rather than downloading a model or
 substituting another controller. Browser reports show zero model calls. This proves

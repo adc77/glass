@@ -51,6 +51,22 @@ def snapshot(service):
         }
 
 
+def capture_summary(service):
+    document = service.latest_capture()
+    payload = document["payload"]
+    outcomes = {}
+    for row in payload["assertions"][0]["value"]["samples"].values():
+        outcomes[row["status"]] = outcomes.get(row["status"], 0) + 1
+    return {
+        "sha256": document["sha256"],
+        "source": payload["source"],
+        "arrival_count": len(payload["arrivals"]),
+        "duration_ns": str(payload["until_ns"] - payload["as_of_ns"]),
+        "stored_reports": len(payload["assertions"][1]["value"]["filed"]),
+        "outcomes": outcomes,
+    }
+
+
 def make_server(service, port=0):
     prefix = "/" + secrets.token_urlsafe(32) + "/"
 
@@ -111,6 +127,8 @@ def make_server(service, port=0):
                     self.respond(200, snapshot(service))
                 elif route == "api/capture/latest":
                     self.respond(200, service.latest_capture(), attachment=True)
+                elif route == "api/capture/summary":
+                    self.respond(200, capture_summary(service))
                 else:
                     self.respond(404, {"error": "not_found"})
             except (ValueError, Refuse, Fault) as error:

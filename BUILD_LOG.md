@@ -2,6 +2,14 @@
 
 Local adoption of seam by the glass lab pipeline. Heavy work is skipped and written down here.
 
+## 2026-10-14 — operations console
+
+- Replaced the introductory workbench layout with a compact operations console: searchable sample queue, status filters, observed counters, sample inspector, measurement form, and keyboard-accessible intake dialog.
+- Added a private capture-metadata projection with exact nanosecond strings and no private sample IDs. The evidence screen explicitly separates recorded captures from verified replay.
+- Network/schema failures mark state stale and disable writes. Requests are time-bounded, writes are never retried automatically, and connection recovery preserves uncertain-write warnings.
+- Extended the installed browser bridge to cover both Glass workflows and the Seam evidence console, including recorded run filtering, actual decisions, timeline search, keyboard tabs, narrow screens, and unchanged evidence file hashes.
+- Existing pipeline, durable service, lab, journal, and capture format remain unchanged. The backend is local-only; public-production authentication/deployment is not implied by the UI redesign. No paid inference or hosting.
+
 ## 2026-10-01
 
 - Host: this Mac. Python 3.14.2 (`python3`). No extra packages. Seam is a separate checkout on `PYTHONPATH`, not installed.

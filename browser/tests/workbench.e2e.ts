@@ -12,9 +12,7 @@ test("scripted browser workflow produces real captured product outcomes", async 
   browser,
 }) => {
   await app.open();
-  await expect(
-    screen.getByRole("heading", "From sample to outcome."),
-  ).toBeVisible();
+  await expect(screen.getByRole("heading", "Sample operations")).toBeVisible();
   await expect(screen.getByRole("alert")).toBeHidden();
   await agent.act("Start capture");
   await expect(browser.locator("#capture-status")).toHaveText(
@@ -73,4 +71,98 @@ test("scripted browser workflow produces real captured product outcomes", async 
     return null;
   });
   await app.screenshot("workbench-1280px");
+  await screen.getByRole("button", sample).click();
+  await expect(browser.locator("#selected-name")).toHaveText(sample);
+  await expect(browser.locator("#selected-explanation")).toContainText(
+    scenario === "healthy"
+      ? "preferred release outcome is achieved"
+      : "not the preferred release outcome",
+  );
+  await screen
+    .getByRole("searchbox", "Search samples")
+    .fill("no-matching-sample");
+  await expect(browser.locator("#empty-title")).toHaveText(
+    "No matching samples",
+  );
+  await expect(browser.locator("#visible-count")).toHaveText("0 of 1 samples");
+  await screen.getByRole("searchbox", "Search samples").clear();
+  await screen
+    .getByRole("combobox", "Status filter")
+    .selectOption({ value: "running" });
+  await expect(browser.locator("#visible-count")).toHaveText("0 of 1 samples");
+  await screen
+    .getByRole("combobox", "Status filter")
+    .selectOption({ value: "all" });
+  await expect(status).toHaveText(
+    scenario === "healthy" ? "released" : "scrapped",
+  );
+  await screen.getByRole("button", "New sample").click();
+  await expect(screen.getByRole("dialog")).toBeVisible();
+  await browser.keyboard.press("Escape");
+  await expect(screen.getByRole("dialog")).toBeHidden();
+  expect(await browser.evaluate(() => document.activeElement?.id ?? null)).toBe(
+    "new-sample",
+  );
+  await screen.getByRole("button", "Inspect latest capture").click();
+  await expect(browser.locator("#capture-metadata")).toBeVisible();
+  await expect(browser.locator("#capture-facts")).toContainText(
+    "Not performed by this screen",
+  );
+  await expect(browser.locator("#captured-outcomes")).toContainText(
+    scenario === "healthy" ? "released: 1" : "scrapped: 1",
+  );
+  await app.screenshot("capture-evidence-1280px");
+  await browser.setViewport({ width: 390, height: 844 });
+  expect(
+    await browser.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await app.screenshot("capture-evidence-390px");
+  await browser.locator("#nav-queue").click();
+  await browser.route("**/api/state", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: "deliberately-invalid-json",
+    }),
+  );
+  await expect(browser.locator("#connection-label")).toHaveText(
+    "Disconnected · stale state",
+  );
+  await expect(screen.getByRole("button", "New sample")).toBeDisabled();
+  await expect(screen.getByRole("button", "Start capture")).toBeDisabled();
+  await expect(screen.getByRole("alert")).toContainText(
+    "Displayed values are stale",
+  );
+  await expect(status).toHaveText(
+    scenario === "healthy" ? "released" : "scrapped",
+  );
+  await browser.unroute("**/api/state");
+  await expect(browser.locator("#connection-label")).toHaveText("Connected");
+  await expect(screen.getByRole("button", "New sample")).toBeEnabled();
+  await expect(screen.getByRole("alert")).toBeHidden();
+  let attemptedWrites = 0;
+  await browser.route("**/api/events", (route) => {
+    attemptedWrites += 1;
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      json: { unexpected: "state schema" },
+    });
+  });
+  await screen.getByRole("button", "New sample").click();
+  await screen.getByRole("textbox", "Sample name").fill("uncertain_write");
+  await screen.getByRole("button", "Receive sample").click();
+  await expect(browser.locator("#intake-error")).toContainText(
+    "Unexpected product state schema",
+  );
+  await expect(browser.locator("#connection-label")).toHaveText("Connected");
+  await screen.getByRole("button", "Cancel").click();
+  await expect(screen.getByRole("alert")).toContainText(
+    "The outcome may be unknown",
+  );
+  await browser.waitForResponse("**/api/state", { timeout: 10000 });
+  expect(attemptedWrites).toBe(1);
+  await browser.unroute("**/api/events");
 });

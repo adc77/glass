@@ -180,6 +180,38 @@ class WorkbenchTests(HttpFixture, unittest.TestCase):
         self.assertNotIn("smp_", dumps(state))
         self.assertNotIn("due", dumps(state))
 
+    def test_capture_metadata_is_projected_without_private_ids_or_integer_loss(self):
+        self.at = 1700000000000000000
+        self.post("api/capture/start", {})
+        self.receive()
+        self.at += 123456789
+        self.reading(10)
+        self.post("api/capture/finish", {})
+        before = (self.root / "live.sqlite").read_bytes()
+        status, summary, _ = self.request("GET", "api/capture/summary")
+        self.assertEqual(status, 200)
+        self.assertEqual(summary["duration_ns"], "123456789")
+        self.assertEqual(summary["arrival_count"], 2)
+        self.assertEqual(summary["outcomes"], {"released": 1})
+        self.assertEqual(summary["stored_reports"], 1)
+        self.assertEqual(summary["source"]["module"], "glass.replay")
+        self.assertEqual(len(summary["sha256"]), 64)
+        self.assertNotIn("smp_", dumps(summary))
+        self.assertNotIn("initial_state", summary)
+        self.assertEqual((self.root / "live.sqlite").read_bytes(), before)
+
+    def test_capture_metadata_refuses_absent_capture_and_does_not_invent_a_verdict(
+        self,
+    ):
+        self.assertEqual(self.request("GET", "api/capture/summary")[0], 400)
+        self.post("api/capture/start", {})
+        self.receive()
+        self.post("api/capture/finish", {})
+        summary = self.request("GET", "api/capture/summary")[1]
+        self.assertEqual(summary["outcomes"], {"running": 1})
+        self.assertEqual(summary["stored_reports"], 0)
+        self.assertNotIn("passed", dumps(summary))
+
     def test_origin_host_and_cross_site_requests_cannot_write(self):
         body = dumps({"handler": "receive", "body": {"sample": "s1", "kind": "blood"}})
         for headers in (

@@ -62,12 +62,8 @@ async function command(executable, args, options = {}) {
   });
 }
 
-async function launch(db, cwd) {
-  const child = spawn(
-    python,
-    ["-I", "-m", "glass.workbench", "serve", "--db", db],
-    { cwd },
-  );
+async function launch(args, prefix, cwd) {
+  const child = spawn(python, ["-I", ...args], { cwd });
   const lines = createInterface({ input: child.stdout });
   let errors = "";
   child.stderr.on("data", (data) => {
@@ -92,9 +88,9 @@ async function launch(db, cwd) {
       );
       lines.once("line", (line) => {
         clearTimeout(timer);
-        if (!line.startsWith("Glass workbench: "))
+        if (!line.startsWith(prefix))
           reject(new Error("Unexpected startup output: " + line));
-        else resolve(line.slice("Glass workbench: ".length));
+        else resolve(line.slice(prefix.length));
       });
       child.once("error", (error) => {
         clearTimeout(timer);
@@ -122,7 +118,11 @@ for (const scenario of ["healthy", "adverse"]) {
     ["-I", "-m", "glass.workbench", "init", "--db", db, "--scenario", scenario],
     { cwd: root },
   );
-  const server = await launch(db, root);
+  const server = await launch(
+    ["-m", "glass.workbench", "serve", "--db", db],
+    "Glass workbench: ",
+    root,
+  );
   const output = `.e2e/${runId}-${scenario}`;
   fs.mkdirSync(path.join(project, output), { recursive: true, mode: 0o700 });
   const capture = path.join(directory, "capture.json");
@@ -233,6 +233,108 @@ for (const scenario of ["healthy", "adverse"]) {
     live_db_unchanged: true,
   });
 }
+function hashTree(directory) {
+  const entries = [];
+  function visit(folder) {
+    for (const name of fs.readdirSync(folder).sort()) {
+      const file = path.join(folder, name);
+      if (fs.statSync(file).isDirectory()) visit(file);
+      else
+        entries.push([
+          path.relative(directory, file),
+          crypto
+            .createHash("sha256")
+            .update(fs.readFileSync(file))
+            .digest("hex"),
+        ]);
+    }
+  }
+  visit(directory);
+  return JSON.stringify(entries);
+}
+const demoRoot = path.join(root, "viewer-demo");
+const demo = await command(
+  python,
+  ["-I", "-m", "glass.demo", "--scripted", "--out", demoRoot],
+  { cwd: root },
+);
+assert.equal(JSON.parse(demo.stdout).status, "passed");
+fs.writeFileSync(path.join(root, "viewer-demo.stdout.log"), demo.stdout, {
+  flag: "wx",
+});
+fs.writeFileSync(path.join(root, "viewer-demo.stderr.log"), demo.stderr, {
+  flag: "wx",
+});
+const experiment = path.join(demoRoot, "experiment");
+const originalEvidence = hashTree(experiment);
+const incomplete = path.join(root, "viewer-incomplete");
+fs.mkdirSync(incomplete, { mode: 0o700 });
+const viewer = await launch(
+  [
+    "-m",
+    "seam_viewer",
+    "--experiment",
+    "Glass=" + experiment,
+    "--experiment",
+    "Incomplete=" + incomplete,
+  ],
+  "Seam viewer: ",
+  root,
+);
+const viewerOutput = `.e2e/${runId}-viewer`;
+fs.mkdirSync(path.join(project, viewerOutput), {
+  recursive: true,
+  mode: 0o700,
+});
+try {
+  const run = await command(
+    process.execPath,
+    [
+      path.join(project, "node_modules/e2e/dist/cli/bin.js"),
+      "run",
+      "--config",
+      "viewer.config.ts",
+    ],
+    {
+      env: {
+        ...process.env,
+        E2E_TELEMETRY_DISABLED: "1",
+        GLASS_VIEWER_URL: viewer.url,
+        GLASS_BROWSER_OUTPUT: viewerOutput,
+      },
+    },
+  );
+  fs.writeFileSync(path.join(root, "viewer-browser.stdout.log"), run.stdout, {
+    flag: "wx",
+  });
+  fs.writeFileSync(path.join(root, "viewer-browser.stderr.log"), run.stderr, {
+    flag: "wx",
+  });
+} finally {
+  await viewer.stop();
+}
+const viewerReport = JSON.parse(
+  fs.readFileSync(path.join(project, viewerOutput, "report.json"), "utf8"),
+);
+assert.equal(viewerReport.schemaVersion, "report-1");
+assert.equal(viewerReport.run.status, "passed");
+assert.equal(viewerReport.run.usage.maxModelCallsInStep, 0);
+const viewerAttempts = viewerReport.run.results.flatMap((row) => row.attempts);
+assert.equal(viewerAttempts.length, 1);
+assert(
+  !viewerAttempts[0].appLog?.some((entry) => entry.level === "error"),
+  "viewer console/network errors",
+);
+assert.equal(
+  hashTree(experiment),
+  originalEvidence,
+  "viewer modified experiment evidence",
+);
+fs.cpSync(
+  path.join(project, viewerOutput),
+  path.join(root, "viewer-browser-evidence"),
+  { recursive: true, errorOnExist: true, force: false },
+);
 const summary = {
   status: "passed",
   controller: "scripted-browser-not-an-LLM",
@@ -240,6 +342,12 @@ const summary = {
   scope:
     "real-time browser workflows plus deterministic product capture replay; not deterministic browser execution or human behavior",
   results,
+  viewer: {
+    status: "passed",
+    recorded_runs: 4,
+    evidence_unchanged: true,
+    model_calls: 0,
+  },
 };
 fs.writeFileSync(
   path.join(root, "verification.json"),

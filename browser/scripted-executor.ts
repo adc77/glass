@@ -37,6 +37,7 @@ export const scripted: StepExecutor = {
       case "Receive sample":
         if (typeof params?.sample !== "string")
           throw new Error("Explicit sample parameter required");
+        await ctx.actions.tap(await target("button", "New sample"));
         await ctx.actions.type(
           await target("textbox", "Sample name"),
           params.sample,

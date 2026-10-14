@@ -11,6 +11,7 @@ if (!url || !output)
 
 export default {
   projectId: "glass-local-workbench",
+  tests: "tests/workbench.e2e.ts",
   agents: { default: { executor: scripted, maxSteps: 8 } },
   targets: [
     {

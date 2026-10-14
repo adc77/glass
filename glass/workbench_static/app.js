@@ -1,83 +1,308 @@
 "use strict";
-const byId = (name) => document.getElementById(name);
-let busy = false;
-let current = null;
-let refreshing = false;
-let generation = 0;
+const byId = (id) => document.getElementById(id);
+const activeStatuses = new Set([
+  "received",
+  "queued",
+  "running",
+  "retest",
+  "report_pending",
+]);
+const exceptionStatuses = new Set([
+  "scrapped",
+  "overdue",
+  "dropped",
+  "report_failed",
+]);
+const explanations = {
+  received:
+    "Receipt recorded. Inspect subsequent product state before submitting a reading.",
+  queued:
+    "Bench is busy. The product has scheduled its retry; a reading is not yet permitted.",
+  running:
+    "Ready for a measurement. The product enforces the sample's reading deadline.",
+  retest:
+    "Quality check failed. One product-owned retest is scheduled; wait until running.",
+  report_pending:
+    "Report acknowledgement is pending. A write may already exist; retries reuse the same key.",
+  released:
+    "The report is acknowledged and the preferred release outcome is achieved.",
+  scrapped:
+    "Final disposition after failed quality checks. Completed, but not the preferred release outcome.",
+  overdue:
+    "The reading deadline expired. This is an exception, not a successful release.",
+  dropped:
+    "The bench could not accept the sample after its retry. No release was achieved.",
+  report_failed:
+    "Report attempts are exhausted. Do not treat the intended disposition as acknowledged.",
+};
+let current = null,
+  busy = false,
+  connected = false,
+  refreshing = false;
+let generation = 0,
+  captureGeneration = 0,
+  selected = null,
+  queueSignature = "";
+let view = "queue",
+  operationError = null,
+  connectionError = null;
 
-async function request(path, body) {
-  const response = await fetch(
-    path,
-    body === undefined
-      ? { cache: "no-store", credentials: "omit" }
-      : {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-          credentials: "omit",
-        },
-  );
-  const value = await response.json();
-  if (!response.ok) throw new Error(value.error);
+function element(tag, text, className) {
+  const value = document.createElement(tag);
+  if (text !== undefined) value.textContent = String(text);
+  if (className) value.className = className;
   return value;
 }
-
-function error(message) {
-  byId("error").textContent = message;
-  byId("error").hidden = false;
+function tone(status) {
+  if (status === "released") return "success";
+  if (exceptionStatuses.has(status)) return "failure";
+  if (["queued", "retest", "report_pending"].includes(status)) return "warning";
+  return "active";
 }
-
+function facts(id, rows) {
+  byId(id).replaceChildren(
+    ...rows.flatMap(([key, value]) => [
+      element("dt", key),
+      element("dd", value),
+    ]),
+  );
+}
+function error(message, kind = "operation") {
+  if (kind === "connection") connectionError = message;
+  else operationError = message;
+  showErrors();
+  if (byId("receive-dialog").open) {
+    byId("intake-error").textContent = message;
+    byId("intake-error").hidden = false;
+  }
+}
+function showErrors() {
+  const messages = [operationError, connectionError].filter(
+    (value) => value !== null,
+  );
+  byId("error").textContent = messages.join(" ");
+  byId("error").hidden = messages.length === 0;
+}
+function connection(value) {
+  connected = value;
+  byId("connection").dataset.state = value ? "connected" : "disconnected";
+  byId("connection-label").textContent = value
+    ? "Connected"
+    : "Disconnected · stale state";
+  syncControls();
+}
+async function request(path, body) {
+  const controller = new AbortController();
+  const deadline = setTimeout(() => controller.abort(), 10000);
+  try {
+    const response = await fetch(path, {
+      signal: controller.signal,
+      cache: "no-store",
+      credentials: "omit",
+      ...(body === undefined
+        ? {}
+        : {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          }),
+    });
+    const value = await response.json();
+    if (!response.ok) throw new Error(value.error);
+    return value;
+  } finally {
+    clearTimeout(deadline);
+  }
+}
+function validateState(state) {
+  if (
+    !state ||
+    !Array.isArray(state.samples) ||
+    !Number.isSafeInteger(state.stored_reports) ||
+    state.stored_reports < 0 ||
+    !["idle", "active", "invalidated"].includes(state.capture) ||
+    typeof state.capture_available !== "boolean" ||
+    state.mode !== "real-time-local-synthetic-product"
+  )
+    throw new Error("Unexpected product state schema");
+  const names = new Set();
+  for (const row of state.samples) {
+    if (
+      typeof row.public !== "string" ||
+      typeof row.kind !== "string" ||
+      !Object.hasOwn(explanations, row.status) ||
+      typeof row.retested !== "boolean" ||
+      !Number.isSafeInteger(row.report_attempts) ||
+      row.report_attempts < 0 ||
+      row.report_attempts > 2 ||
+      names.has(row.public)
+    )
+      throw new Error("Unexpected sample state schema");
+    names.add(row.public);
+  }
+}
+function syncControls() {
+  const blocked = busy || !connected || current === null;
+  byId("new-sample").disabled = blocked;
+  byId("receive-button").disabled = blocked;
+  byId("close-receive").disabled = busy;
+  byId("cancel-receive").disabled = busy;
+  byId("reading-button").disabled =
+    blocked || !current.samples.some((row) => row.status === "running");
+  byId("capture-start").disabled = blocked || current.capture !== "idle";
+  byId("capture-finish").disabled = blocked || current.capture !== "active";
+  byId("capture-abort").disabled = blocked || current.capture === "idle";
+  const available =
+    !blocked && current.capture_available && current.capture === "idle";
+  byId("download").hidden = !available;
+  byId("inspect-capture").disabled = !available;
+  byId("refresh-capture").disabled = !available;
+}
+function renderQueue() {
+  if (!current) return;
+  const query = byId("sample-search").value.trim().toLowerCase();
+  const filter = byId("status-filter").value;
+  const signature = JSON.stringify([current.samples, query, filter, selected]);
+  if (signature === queueSignature) return;
+  queueSignature = signature;
+  const filtered = current.samples.filter(
+    (row) =>
+      `${row.public} ${row.kind}`.toLowerCase().includes(query) &&
+      (filter === "all" ||
+        (filter === "active"
+          ? activeStatuses.has(row.status)
+          : filter === "exceptions"
+            ? exceptionStatuses.has(row.status)
+            : row.status === filter)),
+  );
+  const focusedSample = document.activeElement?.dataset.sampleLink;
+  const rows = filtered.map((sample) => {
+    const row = element("tr");
+    row.dataset.sample = sample.public;
+    row.dataset.selected = String(selected === sample.public);
+    const nameCell = element("td");
+    const control = element("button", sample.public, "sample-link");
+    control.type = "button";
+    control.dataset.sampleLink = sample.public;
+    control.setAttribute("aria-pressed", String(selected === sample.public));
+    control.addEventListener("click", () => selectSample(sample.public));
+    nameCell.append(control);
+    const statusCell = element("td");
+    statusCell.append(
+      element(
+        "span",
+        sample.status,
+        `badge sample-status ${tone(sample.status)}`,
+      ),
+    );
+    row.append(
+      nameCell,
+      element("td", sample.kind),
+      statusCell,
+      element("td", sample.retested ? "Yes" : "No"),
+      element("td", sample.report_attempts),
+    );
+    return row;
+  });
+  byId("samples").replaceChildren(...rows);
+  if (focusedSample)
+    Array.from(byId("samples").querySelectorAll("button"))
+      .find((control) => control.dataset.sampleLink === focusedSample)
+      ?.focus({ preventScroll: true });
+  byId("empty").hidden = filtered.length !== 0;
+  byId("empty-title").textContent = current.samples.length
+    ? "No matching samples"
+    : "No samples received";
+  byId("empty-description").textContent = current.samples.length
+    ? "Change the search or status filter to see the queue."
+    : "Use New sample to submit a synthetic receipt to the product.";
+  byId("visible-count").textContent =
+    `${filtered.length} of ${current.samples.length} samples`;
+}
+function selectSample(name) {
+  selected = name;
+  const row = current.samples.find((item) => item.public === name);
+  if (row?.status === "running") byId("reading-sample").value = name;
+  renderInspector();
+  renderQueue();
+}
+function renderInspector() {
+  const row = current.samples.find((item) => item.public === selected);
+  byId("selected-name").textContent = row ? row.public : "No sample selected";
+  byId("selected-explanation").textContent = row
+    ? explanations[row.status]
+    : "Select a sample from the queue to inspect its actual state.";
+  facts(
+    "selected-facts",
+    row
+      ? [
+          ["Status", row.status],
+          ["Kind", row.kind],
+          ["Retested", row.retested ? "Yes" : "No"],
+          ["Report attempts", `${row.report_attempts} / 2`],
+          [
+            "Preferred release",
+            row.status === "released" ? "Achieved" : "Not achieved",
+          ],
+        ]
+      : [],
+  );
+}
 function render(state) {
   current = state;
-  byId("samples").replaceChildren();
-  for (const sample of state.samples) {
-    const row = document.createElement("tr");
-    row.dataset.sample = sample.public;
-    for (const [index, value] of [
-      sample.public,
-      sample.kind,
-      sample.status,
-      sample.retested ? "Yes" : "No",
-      sample.report_attempts,
-    ].entries()) {
-      const cell = document.createElement("td");
-      cell.textContent = String(value);
-      if (index === 2) cell.className = "sample-status";
-      row.append(cell);
-    }
-    byId("samples").append(row);
-  }
-  byId("empty").hidden = state.samples.length !== 0;
-  const selected = byId("reading-sample").value;
-  const running = state.samples.filter((sample) => sample.status === "running");
-  const expected = running.length
-    ? running.map((sample) => sample.public)
-    : [""];
-  const existing = Array.from(
-    byId("reading-sample").options,
-    (option) => option.value,
-  );
-  if (JSON.stringify(existing) !== JSON.stringify(expected)) {
-    byId("reading-sample").replaceChildren();
-    for (const name of expected) {
-      const option = document.createElement("option");
-      option.value = name;
-      option.textContent = name === "" ? "No running samples" : name;
-      byId("reading-sample").append(option);
-    }
-    if (running.some((sample) => sample.public === selected))
-      byId("reading-sample").value = selected;
-  }
+  byId("metric-total").textContent = state.samples.length;
+  byId("metric-active").textContent = state.samples.filter((row) =>
+    activeStatuses.has(row.status),
+  ).length;
+  byId("metric-released").textContent = state.samples.filter(
+    (row) => row.status === "released",
+  ).length;
+  byId("metric-exceptions").textContent = state.samples.filter((row) =>
+    exceptionStatuses.has(row.status),
+  ).length;
+  byId("queue-badge").textContent = state.samples.length;
+  byId("evidence-badge").textContent = state.capture_available ? "1" : "0";
+  byId("queue-summary").textContent =
+    `${state.samples.length} observed samples · product-owned state`;
   byId("report-count").textContent = "Stored reports: " + state.stored_reports;
+  const previous = byId("reading-sample").value;
+  const running = state.samples
+    .filter((row) => row.status === "running")
+    .map((row) => row.public);
+  const expected = running.length ? running : [""];
+  if (
+    JSON.stringify(
+      Array.from(byId("reading-sample").options, (option) => option.value),
+    ) !== JSON.stringify(expected)
+  ) {
+    byId("reading-sample").replaceChildren(
+      ...expected.map((name) => {
+        const option = element("option", name || "No running samples");
+        option.value = name;
+        return option;
+      }),
+    );
+    if (running.includes(previous)) byId("reading-sample").value = previous;
+  }
   byId("capture-status").textContent = "Capture: " + state.capture;
-  byId("reading-button").disabled = busy || running.length === 0;
-  byId("capture-start").disabled = busy || state.capture !== "idle";
-  byId("capture-finish").disabled = busy || state.capture !== "active";
-  byId("capture-abort").disabled = busy || state.capture === "idle";
-  byId("download").hidden =
-    !state.capture_available || state.capture !== "idle";
+  byId("capture-indicator").textContent = state.capture.toUpperCase();
+  byId("capture-indicator").className =
+    `badge ${state.capture === "invalidated" ? "failure" : state.capture === "active" ? "active" : "neutral"}`;
+  byId("capture-description").textContent =
+    state.capture === "active"
+      ? "Inputs are being recorded. Finish to freeze an export."
+      : state.capture === "invalidated"
+        ? "A delivery failed. Explicitly abort before starting a new capture."
+        : state.capture_available
+          ? "A completed capture is retained. Replay must be verified separately."
+          : "Start before the workflow to record its inputs and outcomes.";
+  byId("observed-at").textContent =
+    "Last observed " + new Date().toLocaleTimeString();
+  renderQueue();
+  renderInspector();
+  syncControls();
+  if (state.capture !== "idle" || !state.capture_available) clearCapture();
 }
-
 async function refresh() {
   if (busy || refreshing) return false;
   refreshing = true;
@@ -85,51 +310,154 @@ async function refresh() {
   try {
     const state = await request("api/state");
     if (started !== generation) return false;
+    validateState(state);
+    connection(true);
     render(state);
+    connectionError = null;
+    showErrors();
     return true;
   } catch (failure) {
-    error("Could not refresh state: " + failure.message);
+    if (started !== generation) return false;
+    connection(false);
+    error(
+      "Could not observe current state: " +
+        failure.message +
+        ". Displayed values are stale; writes are disabled.",
+      "connection",
+    );
   } finally {
     refreshing = false;
   }
 }
-
 async function mutate(path, body, message) {
-  if (busy) return;
+  if (busy || !connected) return false;
   busy = true;
   generation += 1;
+  captureGeneration += 1;
   byId("error").hidden = true;
-  for (const button of document.querySelectorAll("button"))
-    button.disabled = true;
+  byId("intake-error").hidden = true;
+  operationError = null;
+  showErrors();
+  syncControls();
+  let accepted = false;
   try {
     const state = await request(path, body);
+    validateState(state);
     byId("message").textContent = message;
+    clearCapture();
     render(state);
+    accepted = true;
   } catch (failure) {
+    connection(false);
     error(
       "Request failed: " +
         failure.message +
-        ". Its outcome may be unknown. Refresh state before trying again; this page does not retry writes.",
+        ". The outcome may be unknown. Inspect refreshed state before trying again; writes are never automatically retried.",
     );
   } finally {
     busy = false;
-    for (const button of document.querySelectorAll("button"))
-      button.disabled = false;
-    if (current) render(current);
+    syncControls();
     await refresh();
   }
+  return accepted;
 }
-
-byId("receive-form").addEventListener("submit", (event) => {
+function clearCapture() {
+  byId("capture-metadata").hidden = true;
+  byId("capture-empty").hidden = false;
+  byId("capture-empty").querySelector("h3").textContent =
+    current?.capture === "active"
+      ? "Capture in progress"
+      : current?.capture === "invalidated"
+        ? "Capture invalidated"
+        : "No completed capture selected";
+}
+async function inspectCapture() {
+  const started = ++captureGeneration;
+  clearCapture();
+  if (!connected || !current?.capture_available || current.capture !== "idle")
+    return;
+  byId("capture-empty").querySelector("h3").textContent =
+    "Loading capture metadata";
+  try {
+    const value = await request("api/capture/summary");
+    if (started !== captureGeneration || current.capture !== "idle") return;
+    facts("capture-facts", [
+      ["Payload SHA-256", value.sha256],
+      ["Product module", value.source.module],
+      ["Product SHA-256", value.source.product_sha256],
+      ["SDK version", value.source.sdk_version],
+      ["SDK SHA-256", value.source.sdk_sha256],
+      ["Recorded inputs", value.arrival_count],
+      ["Window (nanoseconds)", value.duration_ns],
+      ["Stored reports at cutoff", value.stored_reports],
+      ["Replay verification", "Not performed by this screen"],
+    ]);
+    byId("captured-outcomes").replaceChildren(
+      ...Object.entries(value.outcomes).map(([status, count]) =>
+        element("span", `${status}: ${count}`, `badge ${tone(status)}`),
+      ),
+    );
+    byId("capture-empty").hidden = true;
+    byId("capture-metadata").hidden = false;
+  } catch (failure) {
+    if (started !== captureGeneration) return;
+    byId("capture-empty").querySelector("h3").textContent =
+      "Capture metadata unavailable";
+    error("Could not inspect the completed capture: " + failure.message);
+  }
+}
+function showView(name) {
+  const changed = view !== name;
+  view = name;
+  for (const item of ["queue", "evidence"]) {
+    byId(item + "-view").hidden = item !== name;
+    if (item === name) byId("nav-" + item).setAttribute("aria-current", "page");
+    else byId("nav-" + item).removeAttribute("aria-current");
+  }
+  byId("breadcrumb-view").textContent =
+    name === "queue" ? "Sample queue" : "Capture evidence";
+  byId("page-title").textContent =
+    name === "queue" ? "Sample operations" : "Capture evidence";
+  byId("page-description").textContent =
+    name === "queue"
+      ? "Monitor the queue, resolve measurements, and capture actual product behavior."
+      : "Inspect the retained capture's identity, inputs, and actual product outcomes.";
+  if (name === "evidence") inspectCapture();
+  if (changed) window.scrollTo(0, 0);
+}
+byId("sample-search").addEventListener("input", renderQueue);
+byId("status-filter").addEventListener("change", renderQueue);
+byId("reading-sample").addEventListener("change", (event) =>
+  selectSample(event.target.value),
+);
+byId("new-sample").addEventListener("click", () => {
+  showView("queue");
+  byId("intake-error").hidden = true;
+  byId("receive-dialog").showModal();
+  byId("sample").focus();
+});
+for (const id of ["close-receive", "cancel-receive"])
+  byId(id).addEventListener("click", () => byId("receive-dialog").close());
+byId("receive-dialog").addEventListener("cancel", (event) => {
+  if (busy) event.preventDefault();
+});
+byId("receive-dialog").addEventListener("close", () =>
+  byId("new-sample").focus(),
+);
+byId("receive-form").addEventListener("submit", async (event) => {
   event.preventDefault();
-  mutate(
-    "api/events",
-    {
-      handler: "receive",
-      body: { sample: byId("sample").value, kind: byId("kind").value },
-    },
-    "Receipt accepted. Inspect the sample's actual status.",
-  );
+  const name = byId("sample").value;
+  if (
+    await mutate(
+      "api/events",
+      { handler: "receive", body: { sample: name, kind: byId("kind").value } },
+      "Receipt accepted. Actual product state is shown below.",
+    )
+  ) {
+    selectSample(name);
+    byId("receive-dialog").close();
+    byId("sample").value = "";
+  }
 });
 byId("reading-form").addEventListener("submit", (event) => {
   event.preventDefault();
@@ -144,24 +472,35 @@ byId("reading-form").addEventListener("submit", (event) => {
       handler: "reading",
       body: { sample: byId("reading-sample").value, value },
     },
-    "Reading accepted. Inspect quality and report outcomes.",
+    "Reading accepted. Inspect the quality and report outcome.",
   );
 });
-for (const name of ["start", "finish", "abort"]) {
-  byId("capture-" + name).addEventListener("click", () =>
-    mutate(
+for (const name of ["start", "finish", "abort"])
+  byId("capture-" + name).addEventListener("click", async () => {
+    if (
+      name === "abort" &&
+      !window.confirm(
+        "Abort this capture? Its recorded inputs will be discarded. Product state and the last completed capture are preserved.",
+      )
+    )
+      return;
+    await mutate(
       "api/capture/" + name,
       {},
-      "Capture command accepted; inspect its recorded state.",
-    ),
-  );
-}
+      "Capture command accepted. Inspect its recorded state.",
+    );
+    if (view === "evidence") inspectCapture();
+  });
+for (const name of ["queue", "evidence"])
+  byId("nav-" + name).addEventListener("click", () => showView(name));
+byId("inspect-capture").addEventListener("click", () => showView("evidence"));
+byId("refresh-capture").addEventListener("click", inspectCapture);
 byId("refresh").addEventListener("click", refresh);
 const initialGeneration = generation;
-refresh().then((connected) => {
-  if (generation !== initialGeneration) return;
-  byId("message").textContent = connected
-    ? "Connected. All actions use the real local product handlers."
-    : "Connection unavailable. Refresh state to reconnect.";
+refresh().then((value) => {
+  if (generation === initialGeneration)
+    byId("message").textContent = value
+      ? "Connected to the local product. Outcomes reflect actual handlers."
+      : "Service unavailable. Displayed state must not be treated as current.";
 });
-setInterval(refresh, 500);
+setInterval(refresh, 1000);

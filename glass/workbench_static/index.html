@@ -3,155 +3,371 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Glass / Sample workbench</title>
+    <meta
+      name="description"
+      content="Private Glass operations console. Real product state and capture evidence."
+    />
+    <title>Glass / Operations</title>
     <link rel="stylesheet" href="style.css" />
     <script src="app.js" defer></script>
   </head>
   <body>
-    <header>
-      <a class="brand" href="./">glass<span>Sample workbench</span></a
-      ><span class="mode">Local synthetic lab / real time</span>
-    </header>
-    <main>
-      <section class="intro">
-        <p class="eyebrow">Observe / operate / capture</p>
-        <h1>From sample to outcome.</h1>
-        <p>
-          Run the actual lab workflow. Capture its inputs and replay product
-          behavior in Seam—without touching this live database.
-        </p>
-      </section>
-      <p id="error" class="error" role="alert" hidden></p>
-      <p id="message" role="status" aria-live="polite">
-        Connecting to your local lab…
-      </p>
-      <div class="workspace">
-        <section class="panel">
-          <p class="eyebrow">01 / Intake</p>
-          <h2>Receive a sample</h2>
-          <form id="receive-form">
-            <label for="sample">Sample name</label
-            ><input
-              id="sample"
-              name="sample"
-              required
-              maxlength="64"
-              pattern="[A-Za-z0-9_\-]+"
-              autocomplete="off"
-              placeholder="sample_01"
-            />
-            <label for="kind">Sample kind</label
-            ><input
-              id="kind"
-              name="kind"
-              required
-              maxlength="64"
-              pattern="[A-Za-z0-9_\-]+"
-              value="blood"
-            />
-            <button type="submit">Receive sample</button>
-          </form>
-          <p class="hint">
-            Names identify synthetic samples. Repeating an identical receipt
-            does not create another sample.
-          </p>
-        </section>
-        <section class="panel">
-          <p class="eyebrow">02 / Measurement</p>
-          <h2>Record a reading</h2>
-          <form id="reading-form">
-            <label for="reading-sample">Running sample</label
-            ><select id="reading-sample" name="sample" required>
-              <option value="">No running samples</option>
-            </select>
-            <label for="reading">Reading value</label
-            ><input
-              id="reading"
-              name="reading"
-              type="number"
-              step="1"
-              min="-1000000"
-              max="1000000"
-              required
-              value="10"
-            />
-            <button id="reading-button" type="submit" disabled>
-              Record reading
-            </button>
-          </form>
-          <p class="hint">
-            A failed quality check schedules one retest. Product timers own
-            retries; this page does not fast-forward time.
-          </p>
-        </section>
-        <section class="panel capture">
-          <p class="eyebrow">03 / Evidence</p>
-          <h2>Capture this workflow</h2>
-          <p id="capture-status">Capture: unknown</p>
-          <div class="capture-actions">
-            <button id="capture-start" type="button">Start capture</button
-            ><button id="capture-finish" type="button" disabled>
-              Finish capture</button
-            ><button
-              id="capture-abort"
-              class="secondary"
-              type="button"
-              disabled
-            >
-              Abort active capture
-            </button>
-          </div>
-          <a
-            id="download"
-            class="download"
-            href="api/capture/latest"
-            download
-            hidden
-            >Download capture</a
-          >
-          <p class="hint">
-            Downloads include internal IDs and dependency state. Keep evidence
-            private. A capture ending with pending work is not goal completion.
-          </p>
-        </section>
+    <a class="skip-link" href="#content">Skip to workspace</a>
+    <aside class="sidebar" aria-label="Workspace navigation">
+      <a class="brand" href="./"
+        ><span class="brand-mark" aria-hidden="true">G</span
+        ><span>Glass<span class="brand-sub">OPERATIONS</span></span></a
+      >
+      <div class="workspace-name">
+        <span class="workspace-avatar" aria-hidden="true">L</span>
+        <div>Synthetic lab<small>Local workspace</small></div>
       </div>
-      <section class="panel outcomes">
-        <div class="section-head">
+      <p class="nav-label">WORKSPACE</p>
+      <nav aria-label="Console views">
+        <button
+          id="nav-queue"
+          class="nav-button"
+          type="button"
+          aria-current="page"
+        >
+          <span>Sample queue</span
+          ><span id="queue-badge" class="nav-count">—</span>
+        </button>
+        <button id="nav-evidence" class="nav-button" type="button">
+          <span>Capture evidence</span
+          ><span id="evidence-badge" class="nav-count">—</span>
+        </button>
+      </nav>
+      <div class="sidebar-bottom">
+        <span class="environment">LOCAL / SYNTHETIC</span>
+        <p>Owned test data only.<br />No public service or model calls.</p>
+      </div>
+    </aside>
+    <div class="shell">
+      <header class="topbar">
+        <div class="breadcrumb">
+          Workspace <span>/</span> Glass <span>/</span>
+          <strong id="breadcrumb-view">Sample queue</strong>
+        </div>
+        <div id="connection" class="connection" data-state="connecting">
+          <span class="connection-dot" aria-hidden="true"></span
+          ><span id="connection-label">Connecting</span>
+        </div>
+      </header>
+      <main id="content">
+        <div class="page-header">
           <div>
-            <p class="eyebrow">Actual product outcomes</p>
-            <h2>Your samples</h2>
+            <p class="eyebrow">GLASS / LIVE OPERATIONS</p>
+            <h1 id="page-title">Sample operations</h1>
+            <p id="page-description">
+              Monitor the queue, resolve measurements, and capture actual
+              product behavior.
+            </p>
           </div>
-          <button id="refresh" class="secondary" type="button">
-            Refresh state
-          </button>
+          <div class="header-actions">
+            <button id="refresh" class="secondary" type="button">
+              Refresh state</button
+            ><button id="new-sample" type="button" disabled>
+              <span aria-hidden="true">+</span> New sample
+            </button>
+          </div>
         </div>
-        <p id="report-count">Stored reports: —</p>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">Sample</th>
-                <th scope="col">Kind</th>
-                <th scope="col">Status</th>
-                <th scope="col">Retested</th>
-                <th scope="col">Report attempts</th>
-              </tr>
-            </thead>
-            <tbody id="samples"></tbody>
-          </table>
+        <div class="status-line">
+          <p id="message" role="status" aria-live="polite">
+            Connecting to the local service.
+          </p>
+          <span id="observed-at">Not observed yet</span>
         </div>
-        <p id="empty">No samples received yet.</p>
+        <div id="error" class="error" role="alert" hidden></div>
+        <section id="queue-view" aria-label="Sample operations">
+          <div class="metrics" aria-label="Observed queue metrics">
+            <div class="metric">
+              <span>Total samples</span><strong id="metric-total">—</strong
+              ><small>All observed receipts</small>
+            </div>
+            <div class="metric">
+              <span>In progress</span><strong id="metric-active">—</strong
+              ><small>Queued, running, or retrying</small>
+            </div>
+            <div class="metric">
+              <span>Released</span><strong id="metric-released">—</strong
+              ><small>Preferred outcome achieved</small>
+            </div>
+            <div class="metric">
+              <span>Exceptions</span><strong id="metric-exceptions">—</strong
+              ><small>Scrapped, overdue, or failed</small>
+            </div>
+          </div>
+          <div class="operations-grid">
+            <section class="panel outcomes" aria-labelledby="queue-title">
+              <div class="panel-heading">
+                <div>
+                  <h2 id="queue-title">Sample queue</h2>
+                  <p id="queue-summary">Waiting for product state</p>
+                </div>
+                <span class="badge neutral">REAL TIME</span>
+              </div>
+              <div class="table-toolbar">
+                <label
+                  ><span class="sr-only">Search samples</span
+                  ><input
+                    id="sample-search"
+                    type="search"
+                    placeholder="Search sample or kind…"
+                    autocomplete="off" /></label
+                ><label
+                  ><span class="sr-only">Status filter</span
+                  ><select id="status-filter">
+                    <option value="all">All statuses</option>
+                    <option value="active">In progress</option>
+                    <option value="exceptions">Exceptions</option>
+                    <option value="released">Released</option>
+                    <option value="scrapped">Scrapped</option>
+                    <option value="queued">Queued</option>
+                    <option value="running">Running</option>
+                    <option value="retest">Retest</option>
+                    <option value="report_pending">Report pending</option>
+                    <option value="report_failed">Report failed</option>
+                    <option value="overdue">Overdue</option>
+                    <option value="dropped">Dropped</option>
+                  </select></label
+                >
+              </div>
+              <div
+                class="table-wrap"
+                tabindex="0"
+                role="region"
+                aria-label="Scrollable sample queue"
+              >
+                <table>
+                  <thead>
+                    <tr>
+                      <th scope="col">Sample</th>
+                      <th scope="col">Kind</th>
+                      <th scope="col">Status</th>
+                      <th scope="col">Retested</th>
+                      <th scope="col">Report attempts</th>
+                    </tr>
+                  </thead>
+                  <tbody id="samples"></tbody>
+                </table>
+              </div>
+              <div id="empty" class="empty-state">
+                <span class="empty-symbol" aria-hidden="true">—</span>
+                <h3 id="empty-title">Waiting for product state</h3>
+                <p id="empty-description">
+                  The queue will appear after the first successful observation.
+                </p>
+              </div>
+              <div class="table-footer">
+                <span id="visible-count">—</span
+                ><span id="report-count">Stored reports: —</span>
+              </div>
+            </section>
+            <aside class="inspector" aria-label="Sample inspector">
+              <section class="panel">
+                <div class="panel-heading">
+                  <h2>Sample inspector</h2>
+                  <span class="badge neutral">OBSERVED</span>
+                </div>
+                <div class="panel-body">
+                  <p id="selected-name" class="selected-name">
+                    No sample selected
+                  </p>
+                  <p id="selected-explanation" class="subtle">
+                    Select a sample from the queue to inspect its actual state.
+                  </p>
+                  <dl id="selected-facts" class="facts"></dl>
+                </div>
+              </section>
+              <section class="panel">
+                <div class="panel-heading"><h2>Record measurement</h2></div>
+                <div class="panel-body">
+                  <form id="reading-form">
+                    <label for="reading-sample">Running sample</label
+                    ><select id="reading-sample" name="sample" required>
+                      <option value="">No running samples</option></select
+                    ><label for="reading">Reading value</label
+                    ><input
+                      id="reading"
+                      name="reading"
+                      type="number"
+                      step="1"
+                      min="-1000000"
+                      max="1000000"
+                      required
+                      value="10"
+                    /><button id="reading-button" type="submit" disabled>
+                      Record reading
+                    </button>
+                  </form>
+                  <p class="hint">
+                    Only running samples accept readings. Product-owned
+                    deadlines and retries remain enforced.
+                  </p>
+                </div>
+              </section>
+              <section class="panel capture">
+                <div class="panel-heading">
+                  <h2>Capture session</h2>
+                  <span id="capture-indicator" class="badge neutral"
+                    >UNKNOWN</span
+                  >
+                </div>
+                <div class="panel-body">
+                  <p id="capture-status">Capture: unknown</p>
+                  <p id="capture-description" class="subtle">
+                    Waiting for capture state.
+                  </p>
+                  <div class="capture-actions">
+                    <button id="capture-start" type="button" disabled>
+                      Start capture</button
+                    ><button
+                      id="capture-finish"
+                      type="button"
+                      class="secondary"
+                      disabled
+                    >
+                      Finish capture</button
+                    ><button
+                      id="capture-abort"
+                      class="quiet danger"
+                      type="button"
+                      disabled
+                    >
+                      Abort active capture
+                    </button>
+                  </div>
+                  <a
+                    id="download"
+                    class="download secondary"
+                    href="api/capture/latest"
+                    download
+                    hidden
+                    >Download capture</a
+                  ><button
+                    id="inspect-capture"
+                    class="quiet"
+                    type="button"
+                    disabled
+                  >
+                    Inspect latest capture
+                  </button>
+                </div>
+              </section>
+            </aside>
+          </div>
+        </section>
+        <section id="evidence-view" aria-label="Capture evidence" hidden>
+          <div class="panel">
+            <div class="panel-heading">
+              <div>
+                <h2>Latest completed capture</h2>
+                <p>Metadata from the actual retained product capture.</p>
+              </div>
+              <button
+                id="refresh-capture"
+                class="secondary"
+                type="button"
+                disabled
+              >
+                Refresh capture metadata
+              </button>
+            </div>
+            <div class="panel-body">
+              <div id="capture-empty" class="empty-state">
+                <h3>No completed capture</h3>
+                <p>
+                  Start and finish a capture from the sample queue. Product
+                  state is never fabricated for this view.
+                </p>
+              </div>
+              <div id="capture-metadata" hidden>
+                <div class="evidence-notice">
+                  <span class="badge warning">REPLAY NOT VERIFIED HERE</span>
+                  <p>
+                    A completed capture is recorded evidence, not proof of goal
+                    completion. Run the verifier to check two strict product
+                    replays.
+                  </p>
+                </div>
+                <dl id="capture-facts" class="facts evidence-facts"></dl>
+                <h3>Captured outcomes</h3>
+                <div id="captured-outcomes" class="outcome-summary"></div>
+              </div>
+              <div class="evidence-boundary">
+                <h3>Reproducibility boundary</h3>
+                <p>
+                  Downloads contain private IDs and dependency state. Keep them
+                  private. The server-side verifier validates source identity
+                  and replays in isolated lab worlds without reading this live
+                  database.
+                </p>
+                <code
+                  >glass-workbench verify --bundle /path/to/capture.json --out
+                  /new/output</code
+                >
+              </div>
+            </div>
+          </div>
+        </section>
+        <footer>
+          <span>Glass operations · Real handlers · Durable SQLite</span
+          ><span
+            >Local synthetic service. Authentication and public deployment are
+            not enabled.</span
+          >
+        </footer>
+      </main>
+    </div>
+    <dialog id="receive-dialog" aria-labelledby="receive-title">
+      <div class="dialog-heading">
+        <div>
+          <p class="eyebrow">SAMPLE INTAKE</p>
+          <h2 id="receive-title">Receive a sample</h2>
+        </div>
+        <button
+          id="close-receive"
+          type="button"
+          class="quiet"
+          aria-label="Close sample intake"
+        >
+          Close
+        </button>
+      </div>
+      <p class="subtle">
+        Submit a synthetic sample to the actual Glass pipeline.
+      </p>
+      <p id="intake-error" class="error" aria-live="polite" hidden></p>
+      <form id="receive-form">
+        <label for="sample">Sample name</label
+        ><input
+          id="sample"
+          name="sample"
+          required
+          maxlength="64"
+          pattern="[A-Za-z0-9_\-]+"
+          autocomplete="off"
+          placeholder="sample_01"
+        /><label for="kind">Sample kind</label
+        ><input
+          id="kind"
+          name="kind"
+          required
+          maxlength="64"
+          pattern="[A-Za-z0-9_\-]+"
+          value="blood"
+        />
         <p class="hint">
-          Released achieves the preferred release outcome. Scrapped completes a
-          disposition, not that preferred outcome. Pending, dropped, and overdue
-          work are shown—not called success.
+          An identical receipt is idempotent. A different kind for an existing
+          name is refused.
         </p>
-      </section>
-      <footer>
-        This is a local synthetic operator workbench, not a production service
-        or a calibrated human simulation. Seam’s evidence viewer remains
-        separate and read-only.
-      </footer>
-    </main>
+        <div class="dialog-actions">
+          <button id="cancel-receive" class="secondary" type="button">
+            Cancel</button
+          ><button id="receive-button" type="submit">Receive sample</button>
+        </div>
+      </form>
+    </dialog>
   </body>
 </html>
