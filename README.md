@@ -44,7 +44,7 @@ Handlers are synchronous. They take time and ids from the seam context, and the 
 
 ## Setup
 
-Seam is not vendored here. The package dependency and CI pin Seam 0.10.0 at `7a3559d13a13463eb8635638be2b9922f0fb20c3`, including the compact evidence console. The SDK core remains unchanged. A normal install fetches it automatically; no sibling Seam checkout or package-index release is required:
+Seam is not vendored here. The package dependency and CI pin Seam 0.10.0 at `30347a7e7afc4388b6d519a3d6f9b5bb77e1ed8d`, including the dark, result-first evidence console and exact readable observation values. The SDK core remains unchanged. A normal install fetches it automatically; no sibling Seam checkout or package-index release is required:
 
 ```shell
 python -m pip install ./glass

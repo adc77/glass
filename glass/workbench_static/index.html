@@ -3,6 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#0c111b" />
     <meta
       name="description"
       content="Private Glass operations console. Real product state and capture evidence."
@@ -58,10 +60,10 @@
         <div class="page-header">
           <div>
             <p class="eyebrow">GLASS / LIVE OPERATIONS</p>
-            <h1 id="page-title">Sample operations</h1>
+            <h1 id="page-title">Live lab workspace</h1>
             <p id="page-description">
-              Monitor the queue, resolve measurements, and capture actual
-              product behavior.
+              Glass is the example product. Add a sample, enter a reading, and
+              see what the real pipeline does.
             </p>
           </div>
           <div class="header-actions">
@@ -80,10 +82,45 @@
         </div>
         <div id="error" class="error" role="alert" hidden></div>
         <section id="queue-view" aria-label="Sample operations">
+          <section class="guide" aria-labelledby="guide-title">
+            <div class="guide-copy">
+              <span class="eyebrow">YOUR NEXT STEP</span>
+              <h2 id="guide-title">Connect to the lab</h2>
+              <p id="guide-description">
+                Waiting for the first observation. No results are invented.
+              </p>
+            </div>
+            <button id="guide-action" type="button" disabled>
+              Waiting for state
+            </button>
+            <ol class="workflow-steps" aria-label="How this works">
+              <li>
+                <span>1</span>
+                <div>
+                  <strong>Add a sample</strong
+                  ><small>Submit a synthetic receipt.</small>
+                </div>
+              </li>
+              <li>
+                <span>2</span>
+                <div>
+                  <strong>Enter a reading</strong
+                  ><small>Use 10 for a passing check; 150 fails.</small>
+                </div>
+              </li>
+              <li>
+                <span>3</span>
+                <div>
+                  <strong>Check the result</strong
+                  ><small>Released is success; rejected is not.</small>
+                </div>
+              </li>
+            </ol>
+          </section>
           <div class="metrics" aria-label="Observed queue metrics">
             <div class="metric">
               <span>Total samples</span><strong id="metric-total">—</strong
-              ><small>All observed receipts</small>
+              ><small>Added to this workspace</small>
             </div>
             <div class="metric">
               <span>In progress</span><strong id="metric-active">—</strong
@@ -94,8 +131,9 @@
               ><small>Preferred outcome achieved</small>
             </div>
             <div class="metric">
-              <span>Exceptions</span><strong id="metric-exceptions">—</strong
-              ><small>Scrapped, overdue, or failed</small>
+              <span>Did not release</span
+              ><strong id="metric-exceptions">—</strong
+              ><small>Rejected, overdue, or failed</small>
             </div>
           </div>
           <div class="operations-grid">
@@ -122,11 +160,13 @@
                     <option value="active">In progress</option>
                     <option value="exceptions">Exceptions</option>
                     <option value="released">Released</option>
-                    <option value="scrapped">Scrapped</option>
+                    <option value="scrapped">
+                      Rejected after quality check
+                    </option>
                     <option value="queued">Queued</option>
-                    <option value="running">Running</option>
-                    <option value="retest">Retest</option>
-                    <option value="report_pending">Report pending</option>
+                    <option value="running">Ready for reading</option>
+                    <option value="retest">Retest scheduled</option>
+                    <option value="report_pending">Report retry</option>
                     <option value="report_failed">Report failed</option>
                     <option value="overdue">Overdue</option>
                     <option value="dropped">Dropped</option>
@@ -167,7 +207,7 @@
             <aside class="inspector" aria-label="Sample inspector">
               <section class="panel">
                 <div class="panel-heading">
-                  <h2>Sample inspector</h2>
+                  <h2>What happened?</h2>
                   <span class="badge neutral">OBSERVED</span>
                 </div>
                 <div class="panel-body">
@@ -181,7 +221,7 @@
                 </div>
               </section>
               <section class="panel">
-                <div class="panel-heading"><h2>Record measurement</h2></div>
+                <div class="panel-heading"><h2>Enter a reading</h2></div>
                 <div class="panel-body">
                   <form id="reading-form">
                     <label for="reading-sample">Running sample</label
@@ -202,14 +242,14 @@
                     </button>
                   </form>
                   <p class="hint">
-                    Only running samples accept readings. Product-owned
-                    deadlines and retries remain enforced.
+                    A sample must be ready before you measure it. Glass handles
+                    waiting and retries; this screen does not skip time.
                   </p>
                 </div>
               </section>
               <section class="panel capture">
                 <div class="panel-heading">
-                  <h2>Capture session</h2>
+                  <h2>Record this workflow</h2>
                   <span id="capture-indicator" class="badge neutral"
                     >UNKNOWN</span
                   >
@@ -262,8 +302,8 @@
           <div class="panel">
             <div class="panel-heading">
               <div>
-                <h2>Latest completed capture</h2>
-                <p>Metadata from the actual retained product capture.</p>
+                <h2>Your saved recording</h2>
+                <p>The inputs and results recorded from the actual product.</p>
               </div>
               <button
                 id="refresh-capture"
@@ -284,24 +324,42 @@
               </div>
               <div id="capture-metadata" hidden>
                 <div class="evidence-notice">
-                  <span class="badge warning">REPLAY NOT VERIFIED HERE</span>
+                  <span class="badge warning">REPLAY NOT CHECKED</span>
                   <p>
-                    A completed capture is recorded evidence, not proof of goal
-                    completion. Run the verifier to check two strict product
-                    replays.
+                    This recording is saved. That does not mean every sample
+                    succeeded. Use the verifier to check that replay produces
+                    the same result twice.
                   </p>
                 </div>
-                <dl id="capture-facts" class="facts evidence-facts"></dl>
-                <h3>Captured outcomes</h3>
+                <div class="recording-summary">
+                  <div>
+                    <span>Inputs recorded</span
+                    ><strong id="recorded-inputs">—</strong>
+                  </div>
+                  <div>
+                    <span>Reports saved</span
+                    ><strong id="recorded-reports">—</strong>
+                  </div>
+                  <div>
+                    <span>Replay check</span><strong>Not run here</strong>
+                  </div>
+                </div>
+                <h3>Results at the moment recording stopped</h3>
                 <div id="captured-outcomes" class="outcome-summary"></div>
+                <details class="technical-details">
+                  <summary>
+                    Technical details · hashes and exact capture window
+                  </summary>
+                  <dl id="capture-facts" class="facts evidence-facts"></dl>
+                </details>
               </div>
               <div class="evidence-boundary">
-                <h3>Reproducibility boundary</h3>
+                <h3>How to check a replay</h3>
                 <p>
-                  Downloads contain private IDs and dependency state. Keep them
-                  private. The server-side verifier validates source identity
-                  and replays in isolated lab worlds without reading this live
-                  database.
+                  Download the recording and run this command with a new output
+                  folder. It replays twice in isolated test worlds and does not
+                  read the live database. The recording includes private IDs:
+                  keep it private.
                 </p>
                 <code
                   >glass-workbench verify --bundle /path/to/capture.json --out

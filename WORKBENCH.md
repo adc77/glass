@@ -1,6 +1,6 @@
 # Glass workbench and browser-to-capture proof
 
-Glass 0.8.0 provides a local operations console over the existing durable service. Receiving samples,
+Glass 0.9.0 provides a dark, guided local operations console over the existing durable service. Receiving samples,
 recording readings, quality checks, retries, and report writes use the ordinary product
 handlers and SQLite lab adapter. The workbench is not Seam's read-only evidence viewer,
 and the browser does not execute inside Seam's guarded simulation process.
@@ -52,6 +52,20 @@ your choice across observations. Intake uses a keyboard-accessible dialog with e
 cancel and focus restoration. Network/schema failures label state stale and disable
 writes until a successful observation; recovering the connection does not clear an
 uncertain-write warning. Requests are bounded to ten seconds without automatic retries.
+
+Open **Live lab workspace** and follow **Your next step**. The guide comes from actual
+observed state: add a sample, wait for the bench/retest/report retry, enter a reading,
+save the recording, or inspect it. It never invents progress, skips a timer, or retries
+a write. Unknown write results instead direct you to review the queue. Status labels
+are plain-language (ready for reading, rejected, report retry); original domain values
+remain available through captures. In the standard demo, a reading of 10 passes and
+150 exercises a failed quality check. The configured lab still decides every outcome.
+
+Dark mode is the default, including native inputs/dialogs. Capture pages show recorded
+input/report counts and outcome labels before technical details. Hashes and exact
+nanoseconds are collapsed by default. The screen never labels a saved recording as
+a verified replay. The optional browser proof checks the theme and contrast of sampled
+visible body/status/control text; that is not full accessibility certification.
 
 **Capture evidence** displays the retained payload/source hashes, input count, exact
 capture-window nanoseconds, and actual outcomes/reports. Its metadata projection omits

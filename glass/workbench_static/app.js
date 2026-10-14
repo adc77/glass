@@ -13,6 +13,18 @@ const exceptionStatuses = new Set([
   "dropped",
   "report_failed",
 ]);
+const statusLabels = {
+  received: "Received",
+  queued: "Waiting for bench",
+  running: "Ready for reading",
+  retest: "Retest scheduled",
+  report_pending: "Report retry",
+  released: "Released",
+  scrapped: "Rejected",
+  overdue: "Reading overdue",
+  dropped: "Not accepted",
+  report_failed: "Report failed",
+};
 const explanations = {
   received:
     "Receipt recorded. Inspect subsequent product state before submitting a reading.",
@@ -43,6 +55,7 @@ let generation = 0,
   captureGeneration = 0,
   selected = null,
   queueSignature = "";
+let guideIntent = "none";
 let view = "queue",
   operationError = null,
   connectionError = null;
@@ -157,6 +170,71 @@ function syncControls() {
   byId("download").hidden = !available;
   byId("inspect-capture").disabled = !available;
   byId("refresh-capture").disabled = !available;
+  byId("guide-action").disabled = blocked;
+  renderGuide();
+}
+function renderGuide() {
+  const ready = current?.samples.find((row) => row.status === "running");
+  const waiting = current?.samples.find((row) =>
+    activeStatuses.has(row.status),
+  );
+  let title, description, action;
+  guideIntent = "none";
+  if (!connected || !current) {
+    title = "The lab is disconnected";
+    description =
+      "The displayed results may be old. Actions remain disabled until a fresh observation succeeds.";
+    action = "Waiting for connection";
+  } else if (operationError !== null) {
+    title = "Review the state before trying again";
+    description =
+      "A request returned an uncertain result. Check the sample queue before repeating an action; the page will not retry writes for you.";
+    action = "Review samples";
+    guideIntent = "review";
+  } else if (current.capture === "invalidated") {
+    title = "This recording cannot be saved";
+    description =
+      "An input failed. Cancel the recording explicitly before starting another; product state and the previous saved recording are preserved.";
+    action = "Cancel failed recording";
+    guideIntent = "abort";
+  } else if (ready) {
+    title = `${ready.public} is ready for a reading`;
+    description =
+      "In the standard demo, 10 passes and 150 exercises quality failure and retesting. The configured lab—not this screen—decides the outcome.";
+    action = "Enter a reading";
+    guideIntent = "reading";
+  } else if (waiting) {
+    title = "Glass is waiting or retrying";
+    description = explanations[waiting.status];
+    action = "Inspect waiting sample";
+    guideIntent = "inspect";
+  } else if (current.capture === "active" && current.samples.length) {
+    title = "The workflow has reached its final results";
+    description =
+      "Check which samples released and which failed, then stop recording to save these inputs and results.";
+    action = "Save recording";
+    guideIntent = "finish";
+  } else if (current.capture_available && current.capture === "idle") {
+    title = "Your workflow recording is saved";
+    description =
+      "Inspect its actual results or start a new sample. A saved recording is not the same as a checked replay.";
+    action = "View recording";
+    guideIntent = "evidence";
+  } else {
+    title =
+      current.capture === "active"
+        ? "Recording is on. Now add a sample"
+        : "Add a sample to see the pipeline work";
+    description =
+      current.capture === "active"
+        ? "Use New sample, keep kind blood, and submit a test receipt. Enter a reading when Glass says it is ready."
+        : "Start a recording first if you want replay evidence. Then use New sample, keep kind blood, and enter a reading when it is ready.";
+    action = "Add a sample";
+    guideIntent = "new";
+  }
+  byId("guide-title").textContent = title;
+  byId("guide-description").textContent = description;
+  byId("guide-action").textContent = action;
 }
 function renderQueue() {
   if (!current) return;
@@ -179,6 +257,7 @@ function renderQueue() {
   const rows = filtered.map((sample) => {
     const row = element("tr");
     row.dataset.sample = sample.public;
+    row.dataset.status = sample.status;
     row.dataset.selected = String(selected === sample.public);
     const nameCell = element("td");
     const control = element("button", sample.public, "sample-link");
@@ -191,7 +270,7 @@ function renderQueue() {
     statusCell.append(
       element(
         "span",
-        sample.status,
+        statusLabels[sample.status],
         `badge sample-status ${tone(sample.status)}`,
       ),
     );
@@ -236,7 +315,7 @@ function renderInspector() {
     "selected-facts",
     row
       ? [
-          ["Status", row.status],
+          ["Status", statusLabels[row.status]],
           ["Kind", row.kind],
           ["Retested", row.retested ? "Yes" : "No"],
           ["Report attempts", `${row.report_attempts} / 2`],
@@ -263,7 +342,7 @@ function render(state) {
   byId("queue-badge").textContent = state.samples.length;
   byId("evidence-badge").textContent = state.capture_available ? "1" : "0";
   byId("queue-summary").textContent =
-    `${state.samples.length} observed samples · product-owned state`;
+    `${state.samples.length} samples · actual product results, not mock data`;
   byId("report-count").textContent = "Stored reports: " + state.stored_reports;
   const previous = byId("reading-sample").value;
   const running = state.samples
@@ -392,9 +471,15 @@ async function inspectCapture() {
       ["Stored reports at cutoff", value.stored_reports],
       ["Replay verification", "Not performed by this screen"],
     ]);
+    byId("recorded-inputs").textContent = value.arrival_count;
+    byId("recorded-reports").textContent = value.stored_reports;
     byId("captured-outcomes").replaceChildren(
       ...Object.entries(value.outcomes).map(([status, count]) =>
-        element("span", `${status}: ${count}`, `badge ${tone(status)}`),
+        element(
+          "span",
+          `${statusLabels[status]}: ${count}`,
+          `badge ${tone(status)}`,
+        ),
       ),
     );
     byId("capture-empty").hidden = true;
@@ -417,11 +502,11 @@ function showView(name) {
   byId("breadcrumb-view").textContent =
     name === "queue" ? "Sample queue" : "Capture evidence";
   byId("page-title").textContent =
-    name === "queue" ? "Sample operations" : "Capture evidence";
+    name === "queue" ? "Live lab workspace" : "Your workflow recording";
   byId("page-description").textContent =
     name === "queue"
-      ? "Monitor the queue, resolve measurements, and capture actual product behavior."
-      : "Inspect the retained capture's identity, inputs, and actual product outcomes.";
+      ? "Glass is the example product. Add a sample, enter a reading, and see what the real pipeline does."
+      : "The inputs and results saved from the product, ready for isolated replay.";
   if (name === "evidence") inspectCapture();
   if (changed) window.scrollTo(0, 0);
 }
@@ -496,6 +581,25 @@ for (const name of ["queue", "evidence"])
 byId("inspect-capture").addEventListener("click", () => showView("evidence"));
 byId("refresh-capture").addEventListener("click", inspectCapture);
 byId("refresh").addEventListener("click", refresh);
+byId("guide-action").addEventListener("click", () => {
+  if (busy || !connected || !current) return;
+  const ready = current.samples.find((row) => row.status === "running");
+  const waiting = current.samples.find((row) => activeStatuses.has(row.status));
+  if (guideIntent === "review") {
+    showView("queue");
+    byId("sample-search").focus();
+  } else if (guideIntent === "abort") byId("capture-abort").click();
+  else if (guideIntent === "reading" && ready) {
+    selectSample(ready.public);
+    byId("reading").scrollIntoView({ block: "center" });
+    byId("reading").focus();
+  } else if (guideIntent === "inspect" && waiting) {
+    selectSample(waiting.public);
+    byId("selected-name").scrollIntoView({ block: "center" });
+  } else if (guideIntent === "finish") byId("capture-finish").click();
+  else if (guideIntent === "evidence") showView("evidence");
+  else if (guideIntent === "new") byId("new-sample").click();
+});
 const initialGeneration = generation;
 refresh().then((value) => {
   if (generation === initialGeneration)

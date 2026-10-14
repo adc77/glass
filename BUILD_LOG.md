@@ -2,6 +2,15 @@
 
 Local adoption of seam by the glass lab pipeline. Heavy work is skipped and written down here.
 
+## 2026-10-15 — dark guided workspace
+
+- Made both product/evidence interfaces dark by default, with readable controls and plain-language labels instead of raw domain codes on the main screen.
+- Glass now derives the next safe step from actual product state: add/measure/wait/save/inspect, with uncertain-write review and disconnected-state write blocking. Existing handlers, deadlines, retry ownership, lab/journal code, and capture semantics remain unchanged.
+- Recording pages show actual input/report counts and captured results before collapsed hashes and exact nanoseconds; they do not claim a replay was checked.
+- Browser proofs exercise guided focus, save/view recording actions, theme/contrast, queue/dialog/failure behavior, and Seam's result-first persona inspection. No model calls.
+- Reopened the previously populated SQLite workspace under the new assets and verified identical before/after operator state. No data reset or journal migration.
+- The interface remains a local synthetic example, not authenticated public hosting. Exact private evidence and old environments remain preserved.
+
 ## 2026-10-14 — operations console
 
 - Replaced the introductory workbench layout with a compact operations console: searchable sample queue, status filters, observed counters, sample inspector, measurement form, and keyboard-accessible intake dialog.
